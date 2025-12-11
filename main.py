@@ -14,7 +14,7 @@ from systems.dc_motor import DCMotor
 
 
 def simulate_preset_system(motor, ctrl_config):
-    """Original Logic: Simulates Linear System from Config."""
+    """Simulates Linear System from Config."""
     dt = config.SIM_PARAMS["dt"]
     t_end = config.SIM_PARAMS["t_end"]
     dist_time = config.DISTURBANCE_PARAMS["time"]
@@ -81,7 +81,6 @@ def run_preset_dashboard():
         mags, _ = tf.bode_response(w)
         ax_bode.semilogx(w, mags, label=ctrl["name"], color=ctrl["color"], linewidth=2)
 
-    # Polish plots
     if config.DISTURBANCE_PARAMS["enabled"]:
         d_time = config.DISTURBANCE_PARAMS["time"]
         style = config.PLOT_PARAMS["marker_style"]
@@ -107,43 +106,34 @@ def run_custom_simulation():
     """Interactive mode for user-defined equations."""
     print("\n--- Custom Non-Linear Simulation ---")
     print("Define your system differential equation: dx/dt = f(x, u)")
-    print("Variables: 'x' (state), 'u' (input). Functions: sin, cos, exp, tanh, etc.")
+    print("Variables: 'x' (state vector), 'u' (scalar input).")
 
-    eqn = input("Enter dx/dt equation: ").strip()  # e.g. "-x + sin(u)"
+    eqn = input("Enter dx/dt equation (e.g. -x + sin(u)): ").strip()
 
     try:
-        # Create function from string
         dyn_func = make_system_func(eqn)
 
-        # Load params from config
         dt = config.CUSTOM_SIM_PARAMS["dt"]
         t_end = config.CUSTOM_SIM_PARAMS["t_end"]
         step_t = config.CUSTOM_SIM_PARAMS["step_time"]
         step_mag = config.CUSTOM_SIM_PARAMS["step_magnitude"]
         init_shape = config.CUSTOM_SIM_PARAMS["initial_state"]
 
-        # Initialize Solver
+        # NOTE: This requires the Hybrid Solver!
         solver = RK4Solver(dt=dt, dynamics_func=dyn_func)
-
-        # Force 1st order scalar state for simple input strings
         solver.x = np.zeros(init_shape)
 
-        # Simulation Loop
         t_values = np.linspace(0, t_end, int(t_end / dt))
         y_values = []
 
         print("Simulating...")
         for t in t_values:
-            # Configurable Step Input
             u = step_mag if t > step_t else 0.0
             y = solver.step(u)
             y_values.append(y)
 
-        # Plot
-        # Use config figsize and grid alpha
         plt.figure(figsize=config.PLOT_PARAMS["figsize"])
         plt.plot(t_values, y_values, label=f"dx/dt = {eqn}")
-
         plt.title(f"Custom Simulation: {eqn}")
         plt.xlabel("Time (s)")
         plt.ylabel("State x")
@@ -152,7 +142,7 @@ def run_custom_simulation():
         plt.show()
 
     except Exception as e:
-        print(f"Error parsing or simulating: {e}")
+        print(f"Error: {e}")
 
 
 if __name__ == "__main__":

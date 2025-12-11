@@ -22,7 +22,7 @@ DISTURBANCE_PARAMS = {
 
 # --- 4. Controller Designs ---
 CONTROLLERS = [
-    {"name": "P-Only (Weak)", "Kp": 50, "Ki": 0, "Kd": 0, "color": "#d62728"},
+    {"name": "P (Weak)", "Kp": 50, "Ki": 0, "Kd": 0, "color": "#d62728"},
     {"name": "PI (Balanced)", "Kp": 40, "Ki": 50, "Kd": 0, "color": "#1f77b4"},
     {"name": "PID (Aggressive)", "Kp": 60, "Ki": 40, "Kd": 5, "color": "#2ca02c"},
 ]
