@@ -13,9 +13,16 @@ iter_max = 1000
 
 # --- 1. The Parser ---
 def implicit_mul(expr: str) -> str:
-    """Convert '3x' to '3*x'."""
-    expr = re.sub(r"(?<=[0-9\)])(?=[A-Za-z\(])", "*", expr)
-    expr = re.sub(r"(?<=[A-Za-z\)])(?=[0-9\(])", "*", expr)
+    """
+    Convert '3x' to '3*x', but avoid breaking 'sin(u)' into 'sin*(u)'.
+    """
+    # 1. Number/Paren followed by Letter/Paren (e.g. "2x", ")(", ")x")
+    expr = re.sub(r"(?<=[0-9\)])\s*(?=[A-Za-z\(])", "*", expr)
+
+    # 2. Letter/Paren followed by Number (e.g. "x2", ")2")
+    # CRITICAL FIX: Removed '\(' from lookahead to prevent "sin(" -> "sin*("
+    expr = re.sub(r"(?<=[A-Za-z\)])\s*(?=[0-9])", "*", expr)
+
     return expr
 
 
@@ -27,13 +34,9 @@ def preprocess_power(expr: str) -> str:
 def make_func(
     expr_string: str, var_name: str = "t"
 ) -> Callable[[float | complex], float | complex]:
-    """
-    Creates a function from a string (Scalar Math).
-    Supports complex inputs for Complex Step Differentiation.
-    """
+    """Creates a scalar function (supports complex step)."""
     expr = preprocess_power(implicit_mul(expr_string))
 
-    # Allow both math (real) and cmath (complex) functions
     safe_locals = {}
     safe_locals.update(
         {k: getattr(math, k) for k in dir(math) if not k.startswith("_")}
@@ -55,7 +58,6 @@ def make_func(
 def make_system_func(expr_string: str) -> Callable[[np.ndarray, float], np.ndarray]:
     """
     Parses a math string into a function f(x, u) (Vector/Numpy Math).
-    Example: "-0.5*x + sin(u)"
     """
     expr = preprocess_power(implicit_mul(expr_string))
 
@@ -73,7 +75,9 @@ def make_system_func(expr_string: str) -> Callable[[np.ndarray, float], np.ndarr
             if np.isscalar(res):
                 return np.full_like(x, res)
             return np.array(res)
-        except Exception:
+        except Exception as e:
+            # Added error printing for debugging
+            print(f"DEBUG: Eq Eval Error: {e} | Parsed Expr: {expr}")
             return np.zeros_like(x)
 
     return f
@@ -81,28 +85,22 @@ def make_system_func(expr_string: str) -> Callable[[np.ndarray, float], np.ndarr
 
 # --- 2. The Differentiation Engine ---
 class Differentiation:
-    """
-    Handler of real and complex numerical differentiation.
-    Uses Complex Step Differentiation when possible for maximum accuracy.
-    """
+    """Uses Complex Step Differentiation when possible."""
 
     def real_diff(self, func: Callable[..., float], point: float) -> float:
         try:
-            # 1. Try Complex Step Differentiation (High Accuracy)
+            # 1. Try Complex Step (High Accuracy)
             arg = complex(point, h)
             func_result = func(arg)
-
-            # Check if imaginary part propagated
             imag_part = complex(func_result).imag
 
             if abs(imag_part) > 0.0:
                 return imag_part / h
             else:
-                # Fallback if function was non-analytic (e.g. abs(), angle())
                 raise ValueError("Complex step did not propagate")
 
         except Exception:
-            # 2. Fallback to Finite Difference (Robustness)
+            # 2. Fallback to Finite Difference
             try:
                 return (func(point + h) - func(point - h)) / (2 * h)
             except Exception:
