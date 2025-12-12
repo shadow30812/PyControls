@@ -72,6 +72,7 @@ def make_system_func(expr_string: str) -> Callable[[np.ndarray, float], np.ndarr
             safe_locals[name] = getattr(np, name)
 
     def f(t, x, u=0.0):
+        safe_locals["t"] = t
         safe_locals["x"] = x
         safe_locals["u"] = u
         try:
