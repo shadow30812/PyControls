@@ -13,49 +13,46 @@ sys.path.append(os.getcwd())
 
 import config
 from core.analysis import get_stability_margins, get_step_metrics
+from core.estimator import KalmanFilter  # New Import
 from core.math_utils import make_system_func
 from core.solver import ExactSolver, NonlinearSolver
+from core.state_space import StateSpace  # New Import
 
 
 # --- Dynamic System Loader ---
 def load_available_systems():
     """
     Scans the 'systems' package for modules and classes that implement
-    the expected interface (get_closed_loop_tf, get_disturbance_tf).
+    the expected interface.
     """
     systems = {}
     systems_path = os.path.join(os.getcwd(), "systems")
 
-    # 1. Iterate over all files in systems/
     for _, name, _ in pkgutil.iter_modules([systems_path]):
         module_name = f"systems.{name}"
         try:
             module = importlib.import_module(module_name)
-
-            # 2. Inspect module for classes
             for member_name, member_obj in inspect.getmembers(module, inspect.isclass):
                 # Duck Typing: Check if it has the required methods
+                # Note: We still check for old methods to ensure backward compatibility
                 if (
                     hasattr(member_obj, "get_closed_loop_tf")
                     and hasattr(member_obj, "get_disturbance_tf")
                     and member_obj.__module__ == module_name
-                ):  # Ensure it's defined here, not imported
+                ):
                     systems[member_name] = member_obj
         except Exception as e:
             print(f"Warning: Could not load system '{name}': {e}")
-
     return systems
 
 
 class PyControlsApp:
     def __init__(self):
-        # 1. Discover Systems
         self.available_systems = load_available_systems()
         if not self.available_systems:
             print("Error: No valid system classes found in systems/ folder.")
             sys.exit(1)
 
-        # 2. Select Default System (Prefer DCMotor if available, else first found)
         self.system_name = (
             "DCMotor"
             if "DCMotor" in self.available_systems
@@ -63,12 +60,9 @@ class PyControlsApp:
         )
         self.SystemClass = self.available_systems[self.system_name]
 
-        # 3. Load Active Parameters
-        # We instantiate a temporary object to get its default 'self.params'
         temp_instance = self.SystemClass()
         self.active_params = temp_instance.params.copy()
 
-        # Apply Config Overrides (Backward Compatibility for DCMotor)
         if self.system_name == "DCMotor" and hasattr(config, "MOTOR_PARAMS"):
             self.active_params.update(config.MOTOR_PARAMS)
 
@@ -84,23 +78,19 @@ class PyControlsApp:
         print("\n" + "=" * 60)
         print(f"   PyControls Engineering Suite | System: {self.system_name}   ")
         print("=" * 60)
-
-        # Dynamic Parameter Printing
-        # Formats params into a readable string, truncating if too long
         param_list = [f"{k}={v}" for k, v in self.active_params.items()]
         param_str = ", ".join(param_list)
         if len(param_str) > 55:
             print(f"Params: {param_str[:55]}...")
         else:
             print(f"Params: {param_str}")
-
         print("-" * 60)
 
     def main_menu(self):
         self.clear_screen()
         while self.running:
             self.print_header()
-            print("[1] Run Standard Simulation with Bode Plot (Linear - Exact ZOH)")
+            print("[1] Run Standard Simulation (MIMO + Kalman Filter)")
             print("[2] Run Custom Non-Linear Simulation (Adaptive RK45)")
             print("[3] Edit System Parameters")
             print("[4] Edit Disturbance Settings")
@@ -131,13 +121,10 @@ class PyControlsApp:
         names = list(self.available_systems.keys())
         for i, name in enumerate(names):
             print(f"[{i + 1}] {name}")
-
         print("[b] Back")
         sel = input("\nSelect System ID: ").strip()
-
         if sel == "b":
             return
-
         try:
             idx = int(sel) - 1
             if 0 <= idx < len(names):
@@ -145,14 +132,9 @@ class PyControlsApp:
                 if new_name != self.system_name:
                     self.system_name = new_name
                     self.SystemClass = self.available_systems[new_name]
-
-                    # Reset params to the new system's defaults
                     self.active_params = self.SystemClass().params.copy()
-
-                    # Optional: Re-apply config if specific overrides exist
                     if new_name == "DCMotor" and hasattr(config, "MOTOR_PARAMS"):
                         self.active_params.update(config.MOTOR_PARAMS)
-
                     print(f"Switched to {new_name}")
                     time.sleep(1)
                     self.clear_screen()
@@ -163,11 +145,9 @@ class PyControlsApp:
         print(f"\nCurrent Parameters for {self.system_name}:")
         for k, v in self.active_params.items():
             print(f"  [{k}] : {v}")
-
         key = input("\nEnter parameter key to edit (or 'b' to go back): ").strip()
         if key == "b":
             return
-
         if key in self.active_params:
             try:
                 val = float(input(f"New value for {key}: "))
@@ -182,11 +162,9 @@ class PyControlsApp:
         print(f"[2] Set Magnitude (Current: {self.dist_params['magnitude']})")
         print(f"[3] Set Time      (Current: {self.dist_params['time']})")
         print("[b] Back")
-
         choice = input("\nChoice: ").strip()
         if choice == "b":
             return
-
         if choice == "1":
             self.dist_params["enabled"] = not self.dist_params["enabled"]
         elif choice == "2":
@@ -203,97 +181,176 @@ class PyControlsApp:
     def simulate_preset_system(self, system_instance, ctrl_config):
         dt = self.sim_params["dt"]
         t_end = self.sim_params["t_end"]
-        Kp, Ki, Kd = ctrl_config["Kp"], ctrl_config["Ki"], ctrl_config["Kd"]
 
-        # Polymorphic Calls: These work for ANY system class found in /systems
-        tf_ref = system_instance.get_closed_loop_tf(Kp, Ki, Kd)
-        tf_dist = system_instance.get_disturbance_tf(Kp, Ki, Kd)
+        # 1. Setup TRUE System (2-State MIMO: Speed, Current)
+        if hasattr(system_instance, "get_state_space"):
+            ss_real = system_instance.get_state_space()
+            solver_real = ExactSolver(ss_real.A, ss_real.B, ss_real.C, ss_real.D, dt)
+        else:
+            # Fallback for old systems (returns empty arrays)
+            return np.array([]), np.array([]), np.array([])
 
-        Ar, Br, Cr, Dr = tf_ref.to_state_space()
-        solver_ref = ExactSolver(Ar, Br, Cr, Dr, dt=dt)
+        # 2. Setup KALMAN FILTER (3-State Augmented: Speed, Current, Disturbance)
+        if hasattr(system_instance, "get_augmented_state_space"):
+            ss_aug = system_instance.get_augmented_state_space()
+            # Use solver logic to discretize the Augmented Matrices
+            solver_aug_math = ExactSolver(ss_aug.A, ss_aug.B, ss_aug.C, ss_aug.D, dt)
 
-        Ad, Bd, Cd, Dd = tf_dist.to_state_space()
-        solver_dist = ExactSolver(Ad, Bd, Cd, Dd, dt=dt)
+            # Tuning:
+            Q = np.diag([1e-4, 1e-4, 1e-2])  # Process Noise
+            R = np.diag([0.01, 0.01])  # Sensor Noise
+
+            kf = KalmanFilter(
+                solver_aug_math.Phi, solver_aug_math.Gamma, ss_aug.C, Q, R, x0=[0, 0, 0]
+            )
+        else:
+            kf = None
 
         t_values = np.linspace(0, t_end, int(t_end / dt))
-        y_total = []
+        y_real_hist = []
+        x_est_hist = []
+
+        integral_error = 0.0
+        prev_error = 0.0
 
         for t in t_values:
-            u_ref = self.sim_params["step_volts"]
-            y_ref = solver_ref.step(u_ref)
-
+            # A. Disturbance Logic
+            dist_torque = 0.0
             if self.dist_params["enabled"] and t >= self.dist_params["time"]:
-                u_dist = self.dist_params["magnitude"]
+                dist_torque = self.dist_params["magnitude"]
+
+            # B. Controller Step
+            ref_speed = self.sim_params["step_volts"] if t > 0 else 0
+
+            # Feedback: Use ESTIMATE if available, else REAL (cheating)
+            if kf:
+                speed_feedback = kf.x_hat[0, 0]
             else:
-                u_dist = 0.0
-            y_dist = solver_dist.step(u_dist)
+                speed_feedback = solver_real.x[0, 0]
 
-            y_total.append(y_ref + y_dist)
+            error = ref_speed - speed_feedback
+            integral_error += error * dt
+            derivative = (error - prev_error) / dt
+            prev_error = error
 
-        return t_values, np.array(y_total)
+            voltage = (
+                (ctrl_config["Kp"] * error)
+                + (ctrl_config["Ki"] * integral_error)
+                + (ctrl_config["Kd"] * derivative)
+            )
+
+            voltage = np.clip(voltage, -12, 12)
+
+            # C. Physics Step (Real World)
+            # Input: [Voltage, Disturbance]
+            u_real = np.array([[voltage], [dist_torque]])
+            y_real_vector = solver_real.step(u_real)  # [Speed, Current]
+
+            # D. Sensor Noise
+            noise = np.random.normal(0, 0.1, size=2)
+            y_meas = y_real_vector + noise
+
+            # E. Kalman Filter Step
+            if kf:
+                # Filter sees: [Voltage] only
+                u_kf = np.array([[voltage]])
+                x_est = kf.update(u_kf, y_meas)  # [Speed, Current, Dist_Est]
+                x_est_hist.append(x_est)
+
+            y_real_hist.append(y_real_vector)
+
+        return t_values, np.array(y_real_hist), np.array(x_est_hist)
 
     def run_preset_dashboard(self):
-        print(f"\nInitializing Simulation for {self.system_name}...")
+        print(f"\nInitializing MIMO Simulation for {self.system_name}...")
 
-        # Instantiate the currently selected system dynamically
         try:
             current_system = self.SystemClass(**self.active_params)
         except Exception as e:
             print(f"Error instantiating {self.system_name}: {e}")
             return
 
-        fig, axes = plt.subplots(1, 2, figsize=config.PLOT_PARAMS["figsize"])
-        ax_time, ax_bode = axes[0], axes[1]
+        fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+        ax_speed = axes[0, 0]
+        ax_current = axes[0, 1]
+        ax_dist = axes[1, 0]
+        ax_bode = axes[1, 1]
 
-        # Header for the console output table
-        print("-" * 90)
-        print(
-            f"{'Controller':<20} | {'Rise Time':<10} | {'Overshoot':<10} | {'GM (dB)':<10} | {'PM (deg)':<10}"
-        )
-        print("-" * 90)
+        print("-" * 60)
+        print("Simulating Controller Responses...")
 
         for ctrl in self.controllers:
-            t, y = self.simulate_preset_system(current_system, ctrl)
+            t, y_real, x_est = self.simulate_preset_system(current_system, ctrl)
 
-            # Metrics Calculation
-            try:
-                dist_index = np.searchsorted(t, self.dist_params["time"])
-                # Handle edge case where disturbance is beyond simulation time
-                if dist_index >= len(t) or dist_index == 0:
-                    dist_index = len(t)
-                metrics = get_step_metrics(t[:dist_index], y[:dist_index])
-            except Exception:
-                metrics = (0, 0, 0)
+            if len(y_real) > 0:
+                ax_speed.plot(
+                    t, y_real[:, 0], label=f"{ctrl['name']} (Real)", color=ctrl["color"]
+                )
+                ax_current.plot(
+                    t, y_real[:, 1], label=f"{ctrl['name']}", color=ctrl["color"]
+                )
 
-            # Stability Margins
-            tf = current_system.get_closed_loop_tf(ctrl["Kp"], ctrl["Ki"], ctrl["Kd"])
-            gm, pm, _, _ = get_stability_margins(tf)
-
-            print(
-                f"{ctrl['name']:<20} | {metrics[0]:.4f}s    | {metrics[1]:.2f}%      | {gm:.2f}       | {pm:.2f}"
-            )
-
-            ax_time.plot(t, y, label=ctrl["name"], color=ctrl["color"])
-
-            # Bode Plot
-            w = np.logspace(*config.PLOT_PARAMS["bode_range"])
-            mags, _ = tf.bode_response(w)
-            ax_bode.semilogx(w, mags, label=ctrl["name"], color=ctrl["color"])
+                if len(x_est) > 0:
+                    ax_dist.plot(
+                        t,
+                        x_est[:, 2],
+                        label=f"{ctrl['name']} (Est Load)",
+                        color=ctrl["color"],
+                        alpha=0.6,
+                    )
 
         # Plot Styling
         if self.dist_params["enabled"]:
-            d_time = self.dist_params["time"]
+            t_dist = self.dist_params["time"]
+            # Get style from config
             style = config.PLOT_PARAMS["marker_style"]
-            ax_time.axvline(x=d_time, **style)
-            ax_time.text(d_time + 0.05, 0.1, "Disturbance", fontsize=9)
 
-        ax_time.set_title(f"Step Response ({self.system_name})")
-        ax_time.grid(True, alpha=0.3)
-        ax_time.legend()
-        ax_bode.set_title("Bode Magnitude")
-        ax_bode.grid(True, alpha=0.3)
+            # Add vertical line to Speed, Current and Kalman plots
+            ax_speed.axvline(x=t_dist, **style)
+            ax_current.axvline(x=t_dist, **style)
+            ax_dist.axvline(x=t_dist, **style)
 
-        print("\nPlot generated. Close window to return to menu.")
+            ax_speed.text(
+                t_dist + 0.1,
+                ax_speed.get_ylim()[0] * 0.9,
+                "Load Applied",
+                fontsize=8,
+                rotation=90,
+                alpha=0.6,
+            )
+
+        ax_speed.set_title("Speed Response (w/ Noise)")
+        ax_speed.set_ylabel("Speed (rad/s)")
+        ax_speed.grid(True, alpha=0.3)
+        ax_speed.legend(fontsize=8)
+
+        ax_current.set_title("Current Response")
+        ax_current.set_ylabel("Current (A)")
+        ax_current.grid(True, alpha=0.3)
+
+        ax_dist.set_title("Kalman Disturbance Estimation")
+        ax_dist.set_ylabel("Est. Torque (Nm)")
+        ax_dist.grid(True, alpha=0.3)
+        if self.dist_params["enabled"]:
+            ax_dist.axhline(
+                y=self.dist_params["magnitude"],
+                color="k",
+                linestyle=":",
+                label="True Load",
+            )
+            ax_dist.legend(fontsize=8)
+
+        # Bode Plot (Direct Matrix Method)
+        if hasattr(current_system, "get_state_space"):
+            ss = current_system.get_state_space()
+            w = np.logspace(-1, 3, 500)
+            mags, phases = ss.get_frequency_response(w, input_idx=0, output_idx=0)
+            ax_bode.semilogx(w, mags, color="k", label="Plant V->w")
+            ax_bode.set_title("Plant Frequency Response (V -> Speed)")
+            ax_bode.set_xlabel("Frequency (rad/s)")
+            ax_bode.set_ylabel("Magnitude (dB)")
+            ax_bode.grid(True, alpha=0.3)
+
         plt.tight_layout()
         plt.show()
 
@@ -302,12 +359,8 @@ class PyControlsApp:
         eqn = input("Enter dx/dt = f(t, x, u): ").strip()
         try:
             dyn_func = make_system_func(eqn)
-
             x0 = np.zeros(config.CUSTOM_SIM_PARAMS["initial_state"]).flatten()
-
-            # Use the new NonlinearSolver with adaptive steps
             solver = NonlinearSolver(dynamics_func=dyn_func, dt_min=1e-5, dt_max=0.1)
-
             step_time = config.CUSTOM_SIM_PARAMS["step_time"]
 
             def input_signal(t):
@@ -319,7 +372,6 @@ class PyControlsApp:
             t_vals, states = solver.solve_adaptive(
                 t_end=config.CUSTOM_SIM_PARAMS["t_end"], x0=x0, u_func=input_signal
             )
-
             y_vals = states[:, 0] if states.ndim > 1 else states
 
             plt.figure(figsize=config.PLOT_PARAMS["figsize"])

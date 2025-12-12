@@ -40,19 +40,23 @@ class ExactSolver:
     """
 
     def __init__(self, A, B, C, D, dt):
-        self.A = A
-        self.B = B
-        self.C = C
-        self.D = D
-        self.x = np.zeros((A.shape[0], 1))
+        # Force inputs to be at least 2D matrices to support @ operator
+        # This handles the case where D is a scalar (SISO)
+        self.A = np.atleast_2d(A)
+        self.B = np.atleast_2d(B)
+        self.C = np.atleast_2d(C)
+        self.D = np.atleast_2d(D)
+
+        # Initialize state as a vertical vector (n_states, 1)
+        self.x = np.zeros((self.A.shape[0], 1))
 
         # Build combined matrix M for simultaneous Phi and Gamma calc
         # [ A  B ]
         # [ 0  0 ]
-        n_states = A.shape[0]
-        n_inputs = B.shape[1]
+        n_states = self.A.shape[0]
+        n_inputs = self.B.shape[1]
 
-        top = np.hstack((A, B))
+        top = np.hstack((self.A, self.B))
         bottom = np.zeros((n_inputs, n_states + n_inputs))
         M = np.vstack((top, bottom))
 
@@ -64,9 +68,28 @@ class ExactSolver:
         self.Gamma = M_exp[:n_states, n_states:]
 
     def step(self, u_input):
-        self.x = self.Phi @ self.x + self.Gamma * u_input
-        y = self.C @ self.x + self.D * u_input
-        return y[0, 0]
+        """
+        Advances one time step.
+        u_input: Can be scalar (SISO) or list/array (MIMO).
+        Returns: y (scalar or array)
+        """
+        # Ensure u_input is a column vector (m, 1)
+        u = np.array(u_input, dtype=float)
+        if u.ndim == 0:
+            u = u.reshape(1, 1)
+        elif u.ndim == 1:
+            u = u.reshape(-1, 1)
+
+        # x[k+1] = Phi * x[k] + Gamma * u[k]
+        self.x = self.Phi @ self.x + self.Gamma @ u
+
+        # y[k] = C * x[k] + D * u[k]
+        y = self.C @ self.x + self.D @ u
+
+        # Return scalar if it's a 1x1 result (SISO compatibility), else return vector
+        if y.size == 1:
+            return y.item()
+        return y.flatten()  # Return 1D array for easier plotting
 
     def reset(self):
         self.x = np.zeros_like(self.x)
@@ -123,10 +146,13 @@ class NonlinearSolver:
                 dt = t_end - t
 
             # 1. Compute Stages k1-k7 (7M)
+            # k needs to be (7, n_states)
             k = np.zeros((7, x.shape[0]))
 
             # Get input u at current t
             u_val = u_func(t) if u_func else 0.0
+
+            # Initial slope
             k[0] = self.f(t, x, u_val).flatten()
 
             for i in range(1, 7):
@@ -139,6 +165,7 @@ class NonlinearSolver:
                 k[i] = self.f(t_inner, x + dt * dx_sum, u_inner).flatten()
 
             # 2. Compute Updates (Order 5 and Order 4)
+            # self.b is (7,), k is (7, n). b @ k does dot product over axis 0 -> (n,)
             x_5 = x + dt * (self.b @ k)
             x_4 = x + dt * (self.b_hat @ k)
 
