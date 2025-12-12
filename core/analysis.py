@@ -1,7 +1,6 @@
 from math import inf
 
 import numpy as np
-from numba import jit
 
 from core.math_utils import Root
 
@@ -77,23 +76,45 @@ def get_stability_margins(tf, w_start=-2, w_end=5):
     return gain_margin, phase_margin, w_pc, w_gc
 
 
-@jit(nopython=True)
-def get_exact_time_idx(time, response, target_val):
-    """
-    Finds the exact time t where response[t] crosses target_val using linear interpolation.
-    """
-    for i in range(len(response) - 1):
-        y1 = response[i]
-        y2 = response[i + 1]
+try:
+    from numba import jit
 
-        if (y1 <= target_val <= y2) or (y1 >= target_val >= y2):
-            t1 = time[i]
-            t2 = time[i + 1]
-            if y2 == y1:
-                return t1
-            fraction = (target_val - y1) / (y2 - y1)
-            return t1 + fraction * (t2 - t1)
-    return 0.0
+    @jit(nopython=True)
+    def get_exact_time_idx(time, response, target_val):
+        """
+        Finds the exact time t where response[t] crosses target_val using linear interpolation.
+        """
+        for i in range(len(response) - 1):
+            y1 = response[i]
+            y2 = response[i + 1]
+
+            if (y1 <= target_val <= y2) or (y1 >= target_val >= y2):
+                t1 = time[i]
+                t2 = time[i + 1]
+                if y2 == y1:
+                    return t1
+                fraction = (target_val - y1) / (y2 - y1)
+                return t1 + fraction * (t2 - t1)
+        return 0.0
+
+except ImportError:
+
+    def get_exact_time_idx(time, response, target_val):
+        """
+        Finds the exact time t where response[t] crosses target_val using linear interpolation.
+        """
+        for i in range(len(response) - 1):
+            y1 = response[i]
+            y2 = response[i + 1]
+
+            if (y1 <= target_val <= y2) or (y1 >= target_val >= y2):
+                t1 = time[i]
+                t2 = time[i + 1]
+                if y2 == y1:
+                    return t1
+                fraction = (target_val - y1) / (y2 - y1)
+                return t1 + fraction * (t2 - t1)
+        return 0.0
 
 
 def get_step_metrics(time, response):
