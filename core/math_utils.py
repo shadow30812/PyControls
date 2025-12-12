@@ -1,28 +1,22 @@
 import cmath
 import math
 import re
-from typing import Callable
+from typing import Callable, Optional
 
 import numpy as np
 
 # Constants
-TOL = 1e-15
-h = 1e-12
-iter_max = 1000
+TOL = 1e-12
+hc = 1e-12
+hf = 1e-6
+ITER_MAX = 100
 
 
 # --- 1. The Parser ---
 def implicit_mul(expr: str) -> str:
-    """
-    Convert '3x' to '3*x', but avoid breaking 'sin(u)' into 'sin*(u)'.
-    """
-    # 1. Number/Paren followed by Letter/Paren (e.g. "2x", ")(", ")x")
+    """Convert '3x' to '3*x'."""
     expr = re.sub(r"(?<=[0-9\)])\s*(?=[A-Za-z\(])", "*", expr)
-
-    # 2. Letter/Paren followed by Number (e.g. "x2", ")2")
-    # CRITICAL FIX: Removed '\(' from lookahead to prevent "sin(" -> "sin*("
     expr = re.sub(r"(?<=[A-Za-z\)])\s*(?=[0-9])", "*", expr)
-
     return expr
 
 
@@ -36,7 +30,6 @@ def make_func(
 ) -> Callable[[float | complex], float | complex]:
     """Creates a scalar function (supports complex step)."""
     expr = preprocess_power(implicit_mul(expr_string))
-
     safe_locals = {}
     safe_locals.update(
         {k: getattr(math, k) for k in dir(math) if not k.startswith("_")}
@@ -56,18 +49,14 @@ def make_func(
 
 
 def make_system_func(expr_string: str) -> Callable[[np.ndarray, float], np.ndarray]:
-    """
-    Parses a math string into a function f(x, u) (Vector/Numpy Math).
-    """
+    """Parses a math string into a function f(t, x, u)."""
     expr = preprocess_power(implicit_mul(expr_string))
-
-    # Inject all numpy functions so user doesn't need 'np.' prefix
     safe_locals = {"pi": np.pi, "e": np.e}
     for name in dir(np):
         if not name.startswith("_"):
             safe_locals[name] = getattr(np, name)
 
-    def f(x, u):
+    def f(t, x, u=0.0):
         safe_locals["x"] = x
         safe_locals["u"] = u
         try:
@@ -76,7 +65,6 @@ def make_system_func(expr_string: str) -> Callable[[np.ndarray, float], np.ndarr
                 return np.full_like(x, res)
             return np.array(res)
         except Exception as e:
-            # Added error printing for debugging
             print(f"DEBUG: Eq Eval Error: {e} | Parsed Expr: {expr}")
             return np.zeros_like(x)
 
@@ -85,47 +73,178 @@ def make_system_func(expr_string: str) -> Callable[[np.ndarray, float], np.ndarr
 
 # --- 2. The Differentiation Engine ---
 class Differentiation:
-    """Uses Complex Step Differentiation when possible."""
-
     def real_diff(self, func: Callable[..., float], point: float) -> float:
         try:
-            # 1. Try Complex Step (High Accuracy)
-            arg = complex(point, h)
+            # 1. Complex Step
+            arg = complex(point, hc)
             func_result = func(arg)
             imag_part = complex(func_result).imag
-
             if abs(imag_part) > 0.0:
-                return imag_part / h
+                return imag_part / hc
             else:
                 raise ValueError("Complex step did not propagate")
-
         except Exception:
-            # 2. Fallback to Finite Difference
+            # 2. Finite Difference (Central)
             try:
-                return (func(point + h) - func(point - h)) / (2 * h)
+                return (func(point + hf) - func(point - hf)) / (2 * hf)
             except Exception:
                 return 0.0
 
 
-# --- 3. The Root Finder ---
-def find_root(func: Callable, guess0: float) -> float:
-    """Newton-Raphson solver."""
-    guess = guess0
-    diff_tool = Differentiation()
+# --- 3. Robust Root Finders ---
+class Root:
+    def brent_root(
+        self,
+        f: Callable[[float], float],
+        a: float,
+        b: float,
+        tol: float = 1e-12,
+        f_tol: float = 1e-12,
+        maxiter: int = 100,
+    ) -> float:
+        """
+        Robust implementation of Brent's method (1D root finder).
 
-    for _ in range(iter_max):
-        f_val = func(guess)
-        if isinstance(f_val, complex):
-            f_val = f_val.real
+        """
+        fa = f(a)
+        fb = f(b)
 
-        f_prime = diff_tool.real_diff(func, guess)
+        if math.isnan(fa) or math.isnan(fb):
+            raise ValueError("Function returned NaN at initial endpoints.")
 
-        if abs(f_prime) < TOL:
-            break
+        # Require strict bracket
+        if fa * fb > 0:
+            raise ValueError(f"Root is not bracketed: f({a})={fa}, f({b})={fb}")
 
-        new_guess = guess - f_val / f_prime
-        if abs(new_guess - guess) < TOL:
-            return new_guess
-        guess = new_guess
+        if abs(fa) <= f_tol:
+            return a
+        if abs(fb) <= f_tol:
+            return b
 
-    return guess
+        if abs(fa) < abs(fb):
+            a, b = b, a
+            fa, fb = fb, fa
+
+        c = a
+        fc = fa
+        d = a
+        mflag = True
+        iter_count = 0
+
+        while iter_count < maxiter:
+            iter_count += 1
+
+            if abs(b - a) <= tol or abs(fb) <= f_tol:
+                return b
+
+            s = None
+            try:
+                if fa != fc and fb != fc:
+                    # Inverse quadratic interpolation
+                    s = (a * fb * fc) / ((fa - fb) * (fa - fc))
+                    s += (b * fa * fc) / ((fb - fa) * (fb - fc))
+                    s += (c * fa * fb) / ((fc - fa) * (fc - fb))
+                else:
+                    # Secant
+                    denom = fb - fa
+                    if denom == 0:
+                        s = (a + b) / 2.0
+                    else:
+                        s = b - fb * (b - a) / denom
+            except ZeroDivisionError:
+                s = (a + b) / 2.0
+
+            if a > b:
+                a, b = b, a
+                fa, fb = fb, fa
+
+            cond1 = not ((3 * a + b) / 4 < s < b)
+            cond2 = mflag and (abs(s - b) >= abs(b - c) / 2)
+            cond3 = (not mflag) and (abs(s - b) >= abs(c - d) / 2)
+            cond4 = mflag and (abs(b - c) < tol)
+            cond5 = (not mflag) and (abs(c - d) < tol)
+
+            if cond1 or cond2 or cond3 or cond4 or cond5 or s is None or math.isnan(s):
+                s = (a + b) / 2.0
+                mflag = True
+            else:
+                mflag = False
+
+            fs = f(s)
+            if math.isnan(fs):
+                raise ValueError(f"Function returned NaN at s={s}")
+
+            d = c
+            c = b
+            fc = fb
+
+            if fa * fs < 0:
+                b = s
+                fb = fs
+            else:
+                a = s
+                fa = fs
+
+            if abs(fa) < abs(fb):
+                a, b = b, a
+                fa, fb = fb, fa
+
+        return b
+
+    def newton_root(
+        self,
+        func: Callable[[float], float],
+        guess: float,
+        tol: float = 1e-12,
+        maxiter: int = 100,
+    ) -> float:
+        """
+        Newton-Raphson solver using robust differentiation.
+        Good for non-bracketed roots (e.g. x^2 = 0).
+
+        """
+        x = guess
+        diff_tool = Differentiation()
+
+        for _ in range(maxiter):
+            f_val = func(x)
+            if isinstance(f_val, complex):
+                f_val = f_val.real
+
+            if abs(f_val) < tol:
+                return x
+
+            f_prime = diff_tool.real_diff(func, x)
+
+            if abs(f_prime) < 1e-15:  # Avoid div by zero
+                break
+
+            x_new = x - f_val / f_prime
+            if abs(x_new - x) < tol:
+                return x_new
+            x = x_new
+
+        return x
+
+    def find_root(
+        self,
+        func: Callable[[float], float],
+        x0: float,
+        x1: Optional[float] = None,
+        tol: float = 1e-12,
+    ) -> float:
+        """
+        Robust Hybrid Solver.
+        1. If a bracket [x0, x1] is provided, attempts Brent's Method.
+        2. If Brent fails (not bracketed) or no bracket provided, falls back to Newton-Raphson.
+        """
+        if x1 is not None:
+            try:
+                return self.brent_root(func, x0, x1, tol=tol, f_tol=tol)
+            except ValueError:
+                # Bracket invalid (same signs) or other error
+                # Fall through to Newton
+                pass
+
+        # Fallback: Newton-Raphson starting at x0
+        return self.newton_root(func, x0, tol=tol)
