@@ -127,3 +127,37 @@ class DCMotor:
 
         D_aug = np.zeros((2, 1))
         return StateSpace(A_aug, B_aug, C_aug, D_aug)
+
+    def get_parameter_estimation_func(self):
+        """
+        Returns a function f(x, u) -> x_dot compatible with the EKF.
+        State x = [Speed, Current, Inertia_J, Friction_b]
+        """
+        # We need K, R, L to be "known" constants, but J and b are in the state
+        _, _, K, R, L = (
+            self.params.values()
+        )  # Ignore J, b from params (we estimate them)
+
+        def motor_dynamics_4_state(x, u):
+            # Unpack State (supports complex numbers)
+            omega = x[0, 0]
+            i = x[1, 0]
+            J_est = np.exp(x[2, 0])
+            b_est = np.exp(x[3, 0])
+
+            voltage = u[0, 0]
+
+            # Physics Equations
+            # 1. dw/dt = (K*i - b*w) / J
+            dw_dt = (K * i - b_est * omega) / J_est
+
+            # 2. di/dt = (V - R*i - K*w) / L
+            di_dt = (voltage - R * i - K * omega) / L
+
+            # dJ/dt = 0 and db/dt = 0 (Constant parameters)
+            dJ_dt = 0.0
+            db_dt = 0.0
+
+            return np.array([[dw_dt], [di_dt], [dJ_dt], [db_dt]])
+
+        return motor_dynamics_4_state

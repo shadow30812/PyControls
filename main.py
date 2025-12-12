@@ -13,10 +13,11 @@ sys.path.append(os.getcwd())
 
 import config
 from core.analysis import get_stability_margins, get_step_metrics
-from core.estimator import KalmanFilter  # New Import
+from core.ekf import ExtendedKalmanFilter
+from core.estimator import KalmanFilter
 from core.math_utils import make_system_func
 from core.solver import ExactSolver, NonlinearSolver
-from core.state_space import StateSpace  # New Import
+from core.state_space import StateSpace
 
 
 # --- Dynamic System Loader ---
@@ -95,6 +96,7 @@ class PyControlsApp:
             print("[3] Edit System Parameters")
             print("[4] Edit Disturbance Settings")
             print("[5] Switch Active System")
+            print("[6] Run Parameter Estimation Demo (EKF)")
             print("[q] Exit")
 
             choice = input("\nSelect Option: ").strip()
@@ -109,9 +111,10 @@ class PyControlsApp:
                 self.edit_disturbance_menu()
             elif choice == "5":
                 self.switch_system_menu()
+            elif choice == "6":
+                self.run_parameter_estimation()
             elif choice == "q":
                 self.running = False
-                self.clear_screen()
             else:
                 input("Invalid option. Press Enter...")
 
@@ -384,6 +387,137 @@ class PyControlsApp:
         except Exception as e:
             print(f"\nError: {e}")
 
+    def run_parameter_estimation(self):
+        print("\n--- Parameter Estimation Demo (EKF) ---")
+        print("Goal: Estimate Inertia (J) and Friction (b) from scratch.")
+
+        # Load parameters from config
+        est_cfg = config.ESTIMATION_PARAMS
+        dt = est_cfg["dt"]
+        t_end = est_cfg["t_end"]
+        true_params = est_cfg["true_system_params"]
+
+        # 1. Setup the TRUE System (The Reality)
+        # Use parameters defined in config
+        true_motor = self.SystemClass(**true_params)
+        ss_true = true_motor.get_state_space()
+        solver_true = ExactSolver(ss_true.A, ss_true.B, ss_true.C, ss_true.D, dt=dt)
+
+        # 2. Setup the EKF (The Learner)
+        # Function that maps [w, i, J, b] -> [dot_w, dot_i, 0, 0]
+        f_dyn = true_motor.get_parameter_estimation_func()
+
+        # Measurement function: We measure Speed and Current [w, i]
+        # h(x) = [x[0], x[1]]
+        def h_meas(x):
+            return x[:2]
+
+        # Initial Guess (configured in config.py)
+        # The EKF uses Log(J) and Log(b) in the state vector, so we apply log here.
+        x0_est = [
+            0,
+            0,
+            np.log(est_cfg["initial_guess_J"]),
+            np.log(est_cfg["initial_guess_b"]),
+        ]
+
+        # Tuning
+        Q = np.diag(est_cfg["Q_init"])  # Process noise
+        R = np.diag(est_cfg["R"])  # Sensor noise
+
+        ekf = ExtendedKalmanFilter(
+            f_dyn, h_meas, Q, R, x0_est, p_init_scale=est_cfg["p_init_scale"]
+        )
+
+        # 3. Simulation Loop
+        t_vals = np.linspace(0, t_end, int(t_end / dt))
+
+        J_est_hist = []
+        b_est_hist = []
+        speed_true = []
+        speed_est = []
+        current_true = []
+        current_est = []
+
+        print("Simulating... (This uses Complex Step Differentiation!)")
+
+        amp = est_cfg["input_amplitude"]
+        period = est_cfg["input_period"]
+        noise_std = est_cfg["sensor_noise_std"]
+
+        for t in t_vals:
+            # Input Square Wave
+            if (t % period) < (period / 2.0):
+                volts = amp
+            else:
+                volts = 0.0
+            u = np.array([[volts], [0]])  # True system has Load input too (0)
+
+            # Adaptive Q Logic
+            if est_cfg["adaptive_enabled"]:
+                phi = (1 + np.sqrt(5)) / 2
+                if t < t_end / phi:
+                    # Search Mode
+                    ekf.Q = np.diag(est_cfg["Q_search"])
+                else:
+                    # Lock-in Mode
+                    ekf.Q = np.diag(est_cfg["Q_lock"])
+
+            # A. Real World Step
+            y_true = solver_true.step(u)  # [Speed, Current]
+            y_meas = np.array(y_true).reshape(-1, 1) + np.random.normal(
+                0, noise_std, (2, 1)
+            )
+
+            # B. EKF Step
+            # Predict
+            ekf.predict(np.array([[volts]]), dt)
+            # Correct
+            x_hat = ekf.update(y_meas)
+
+            # Store Data
+            speed_true.append(y_true[0])
+            speed_est.append(x_hat[0])
+            current_true.append(y_true[1])
+            current_est.append(x_hat[1])
+            J_est_hist.append(np.exp(x_hat[2]))
+            b_est_hist.append(np.exp(x_hat[3]))
+
+        # 4. Plotting
+        fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+
+        # Speed Convergence
+        axes[0, 0].plot(t_vals, speed_true, "k-", label="True Speed")
+        axes[0, 0].plot(t_vals, speed_est, "r--", label="EKF Est")
+        axes[0, 0].set_title("State Tracking: Speed")
+        axes[0, 0].legend()
+
+        # Current Convergence
+        axes[0, 1].plot(t_vals, current_true, "k-", label="True Current")
+        axes[0, 1].plot(t_vals, current_est, "m--", label="EKF Current")
+        axes[0, 1].set_title("State Tracking: Current")
+        axes[0, 1].legend()
+        axes[0, 1].grid(True)
+
+        # Inertia Estimation
+        true_J = true_params["J"]
+        axes[1, 0].plot(t_vals, J_est_hist, "b-", label="Est J")
+        axes[1, 0].axhline(true_J, color="k", linestyle=":", label=f"True J ({true_J})")
+        axes[1, 0].set_title("Parameter Estimation: Inertia (J)")
+        axes[1, 0].legend()
+        axes[1, 0].grid(True)
+
+        # Friction Estimation
+        true_b = true_params["b"]
+        axes[1, 1].plot(t_vals, b_est_hist, "g-", label="Est b")
+        axes[1, 1].axhline(true_b, color="k", linestyle=":", label=f"True b ({true_b})")
+        axes[1, 1].set_title("Parameter Estimation: Friction (b)")
+        axes[1, 1].legend()
+        axes[1, 1].grid(True)
+
+        plt.tight_layout()
+        plt.show()
+
 
 if __name__ == "__main__":
     app = PyControlsApp()
@@ -392,5 +526,8 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n\nExiting...")
         time.sleep(2)
+    except EOFError:
+        print("\n\nClosing the terminal...")
+        time.sleep(1)
     finally:
         app.clear_screen()
