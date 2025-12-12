@@ -2,7 +2,7 @@ import numpy as np
 
 
 # --- 1. Matrix Operations ---
-def manual_matrix_exp(A, order=10):
+def manual_matrix_exp(A, order=20):
     """
     Computes matrix exponential using Scaling and Squaring with Taylor Series.
     e^A = (e^(A/2^s))^(2^s)
