@@ -7,7 +7,20 @@ from core.math_utils import Root
 
 
 def get_stability_margins(tf, w_start=-2, w_end=5):
-    """Finds Margins using robust implementation."""
+    """
+    Calculates Gain Margin and Phase Margin of a Transfer Function.
+
+    Methods:
+    - Gain Margin: Magnitude at the frequency where Phase = -180 deg.
+    - Phase Margin: Phase at the frequency where Magnitude = 0 dB.
+
+    Args:
+        tf: TransferFunction object.
+        w_start, w_end: Log10 bounds for frequency search.
+
+    Returns:
+        tuple: (Gain Margin, Phase Margin, Phase Crossover Freq, Gain Crossover Freq)
+    """
 
     def phase_func(w):
         if w <= 0:
@@ -28,11 +41,9 @@ def get_stability_margins(tf, w_start=-2, w_end=5):
 
     w_search = np.logspace(w_start, w_end, 100)
 
-    # 1. Gain Margin (Phase Crossover)
     w_pc = 0.0
     for i in range(len(w_search) - 1):
         wa, wb = w_search[i], w_search[i + 1]
-        # Check for sign change to ensure valid bracket for Brent
         if phase_func(wa) * phase_func(wb) < 0:
             try:
                 w_pc = Root().find_root(phase_func, wa, wb)
@@ -44,7 +55,6 @@ def get_stability_margins(tf, w_start=-2, w_end=5):
     if w_pc > 0:
         gain_margin = -mag_func_db(w_pc)
 
-    # 2. Phase Margin (Gain Crossover)
     w_gc = 0.0
     for i in range(len(w_search) - 1):
         wa, wb = w_search[i], w_search[i + 1]
@@ -69,7 +79,9 @@ def get_stability_margins(tf, w_start=-2, w_end=5):
 
 @jit(nopython=True)
 def get_exact_time_idx(time, response, target_val):
-    """Helper: Finds exact time using Linear Interpolation."""
+    """
+    Finds the exact time t where response[t] crosses target_val using linear interpolation.
+    """
     for i in range(len(response) - 1):
         y1 = response[i]
         y2 = response[i + 1]
@@ -85,6 +97,9 @@ def get_exact_time_idx(time, response, target_val):
 
 
 def get_step_metrics(time, response):
+    """
+    Computes standard step response metrics: Rise Time, Overshoot, Settling Time.
+    """
     final_val = response[-1]
     if final_val == 0:
         return 0, 0, 0

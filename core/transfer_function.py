@@ -2,18 +2,23 @@ import numpy as np
 
 
 class TransferFunction:
+    """
+    Representation of a Single-Input Single-Output (SISO) Transfer Function.
+    G(s) = Num(s) / Den(s)
+    """
+
     def __init__(self, num, den):
         self.num = np.array(num, dtype=float)
         self.den = np.array(den, dtype=float)
 
     def evaluate(self, s):
-        """Evaluates G(s) at a complex number s."""
+        """Evaluates G(s) at a complex number s using Horner's method (via np.polyval)."""
         n_val = np.polyval(self.num, s)
         d_val = np.polyval(self.den, s)
         return n_val / d_val if d_val != 0 else np.inf
 
     def bode_response(self, omega_range):
-        """Calculates Magnitude (dB) and Phase (deg)."""
+        """Calculates Magnitude (dB) and Phase (deg) over a frequency range."""
         mags = []
         phases = []
         for w in omega_range:
@@ -24,7 +29,12 @@ class TransferFunction:
         return np.array(mags), np.array(phases)
 
     def to_state_space(self):
-        """Converts TF to Control Canonical Form (x_dot = Ax + Bu)."""
+        """
+        Converts the SISO Transfer Function to State-Space Control Canonical Form.
+
+        Returns:
+            tuple: (A, B, C, D) matrices.
+        """
         norm_factor = self.den[0]
         a = self.den / norm_factor
         b = self.num / norm_factor

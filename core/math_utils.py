@@ -5,30 +5,39 @@ from typing import Callable, Optional
 
 import numpy as np
 
-# Constants
 TOL = 1e-12
 hc = 1e-12
 hf = 1e-6
 ITER_MAX = 100
 
 
-# --- 1. The Parser ---
 def implicit_mul(expr: str) -> str:
-    """Convert '3x' to '3*x'."""
+    """
+    Inserts explicit multiplication signs for implicit multiplication.
+    Example: '3x' -> '3*x', 'sin(x)2' -> 'sin(x)*2'.
+    """
     expr = re.sub(r"(?<=[0-9\)])\s*(?=[A-Za-z\(])", "*", expr)
     expr = re.sub(r"(?<=[A-Za-z\)])\s*(?=[0-9])", "*", expr)
     return expr
 
 
 def preprocess_power(expr: str) -> str:
-    """Convert '^' to '**'."""
+    """Converts caret power syntax (x^2) to Python syntax (x**2)."""
     return re.sub(r"(?<=\w)\^(?=\w|\()", "**", expr)
 
 
 def make_func(
     expr_string: str, var_name: str = "t"
 ) -> Callable[[float | complex], float | complex]:
-    """Creates a scalar function (supports complex step)."""
+    """
+    Compiles a string expression into a callable Python function.
+    The resulting function supports both float and complex arguments,
+    enabling Complex Step Differentiation.
+
+    Args:
+        expr_string: Mathematical expression (e.g., "sin(t) + t^2").
+        var_name: The independent variable name.
+    """
     expr = preprocess_power(implicit_mul(expr_string))
     safe_locals = {}
     safe_locals.update(
@@ -49,7 +58,13 @@ def make_func(
 
 
 def make_system_func(expr_string: str) -> Callable[[np.ndarray, float], np.ndarray]:
-    """Parses a math string into a function f(t, x, u)."""
+    """
+    Compiles a string expression into a state-space function f(t, x, u).
+    Supports NumPy vector operations.
+
+    Args:
+        expr_string: Expression returning the derivative vector (e.g. "[x[1], -x[0]]").
+    """
     expr = preprocess_power(implicit_mul(expr_string))
     safe_locals = {"pi": np.pi, "e": np.e}
     for name in dir(np):
@@ -71,11 +86,15 @@ def make_system_func(expr_string: str) -> Callable[[np.ndarray, float], np.ndarr
     return f
 
 
-# --- 2. The Differentiation Engine ---
 class Differentiation:
+    """
+    Helper class for computing derivatives numerically.
+    Prioritizes Complex Step Differentiation for high accuracy,
+    falling back to Finite Difference if the function doesn't support complex types.
+    """
+
     def real_diff(self, func: Callable[..., float], point: float) -> float:
         try:
-            # 1. Complex Step
             arg = complex(point, hc)
             func_result = func(arg)
             imag_part = complex(func_result).imag
@@ -84,15 +103,17 @@ class Differentiation:
             else:
                 raise ValueError("Complex step did not propagate")
         except Exception:
-            # 2. Finite Difference (Central)
             try:
                 return (func(point + hf) - func(point - hf)) / (2 * hf)
             except Exception:
                 return 0.0
 
 
-# --- 3. Robust Root Finders ---
 class Root:
+    """
+    Collection of robust root-finding algorithms.
+    """
+
     def brent_root(
         self,
         f: Callable[[float], float],
@@ -103,8 +124,9 @@ class Root:
         maxiter: int = 100,
     ) -> float:
         """
-        Robust implementation of Brent's method (1D root finder).
-
+        Finds a root of f(x) = 0 in the interval [a, b] using Brent's Method.
+        Combines Bisection, Secant, and Inverse Quadratic Interpolation.
+        Requires f(a) and f(b) to have opposite signs.
         """
         fa = f(a)
         fb = f(b)
@@ -112,7 +134,6 @@ class Root:
         if math.isnan(fa) or math.isnan(fb):
             raise ValueError("Function returned NaN at initial endpoints.")
 
-        # Require strict bracket
         if fa * fb > 0:
             raise ValueError(f"Root is not bracketed: f({a})={fa}, f({b})={fb}")
 
@@ -140,12 +161,10 @@ class Root:
             s = None
             try:
                 if fa != fc and fb != fc:
-                    # Inverse quadratic interpolation
                     s = (a * fb * fc) / ((fa - fb) * (fa - fc))
                     s += (b * fa * fc) / ((fb - fa) * (fb - fc))
                     s += (c * fa * fb) / ((fc - fa) * (fc - fb))
                 else:
-                    # Secant
                     denom = fb - fa
                     if denom == 0:
                         s = (a + b) / 2.0
@@ -199,9 +218,9 @@ class Root:
         maxiter: int = 100,
     ) -> float:
         """
-        Newton-Raphson solver using robust differentiation.
-        Good for non-bracketed roots (e.g. x^2 = 0).
-
+        Finds a root using the Newton-Raphson method.
+        Calculates derivatives automatically using the Differentiation helper.
+        Useful when the root is not bracketed (e.g. roots of parabolas touching zero).
         """
         x = guess
         diff_tool = Differentiation()
@@ -216,7 +235,7 @@ class Root:
 
             f_prime = diff_tool.real_diff(func, x)
 
-            if abs(f_prime) < 1e-15:  # Avoid div by zero
+            if abs(f_prime) < 1e-15:
                 break
 
             x_new = x - f_val / f_prime
@@ -234,17 +253,16 @@ class Root:
         tol: float = 1e-12,
     ) -> float:
         """
-        Robust Hybrid Solver.
-        1. If a bracket [x0, x1] is provided, attempts Brent's Method.
-        2. If Brent fails (not bracketed) or no bracket provided, falls back to Newton-Raphson.
+        Hybrid Root Finder.
+
+        Strategy:
+        1. If two points [x0, x1] are provided, try Brent's method (bracketed).
+        2. If Brent's fails (bad bracket) or only one point provided, fall back to Newton-Raphson.
         """
         if x1 is not None:
             try:
                 return self.brent_root(func, x0, x1, tol=tol, f_tol=tol)
             except ValueError:
-                # Bracket invalid (same signs) or other error
-                # Fall through to Newton
                 pass
 
-        # Fallback: Newton-Raphson starting at x0
         return self.newton_root(func, x0, tol=tol)

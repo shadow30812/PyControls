@@ -1,37 +1,34 @@
 """
-Central configuration for PyControls.
-Adjust physical parameters, simulation settings, and controller gains here.
-"""
+Central Configuration Module for PyControls.
 
-# --- 1. Physical System Parameters (DC Motor) ---
+This module acts as the control center for the simulation suite. It contains
+all physical parameters, simulation settings, controller gains, and visualization
+preferences."""
+
 MOTOR_PARAMS = {"J": 0.02, "b": 0.2, "K": 0.1, "R": 2.0, "L": 0.5}
 
-# --- 2. Simulation Settings (Preset/Linear) ---
 SIM_PARAMS = {
-    "dt": 0.001,  # Time step (seconds)
-    "t_end": 3.0,  # Duration of simulation (seconds)
-    "step_volts": 1.0,  # Input voltage magnitude
+    "dt": 0.001,
+    "t_end": 3.0,
+    "step_volts": 1.0,
 }
 
-# --- 3. Disturbance Injection ---
 DISTURBANCE_PARAMS = {
     "enabled": True,
-    "time": 1.5,  # Time to apply load (seconds)
-    "magnitude": 0.5,  # Torque magnitude (N*m)
+    "time": 1.5,
+    "magnitude": 0.5,
 }
 
-# --- 4. Controller Designs ---
 CONTROLLERS = [
     {"name": "P (Weak)", "Kp": 50, "Ki": 0, "Kd": 0, "color": "#d62728"},
     {"name": "PI (Balanced)", "Kp": 40, "Ki": 50, "Kd": 0, "color": "#1f77b4"},
     {"name": "PID (Aggressive)", "Kp": 60, "Ki": 40, "Kd": 5, "color": "#2ca02c"},
 ]
 
-# --- 5. Visualization Settings ---
 PLOT_PARAMS = {
     "figsize": (14, 6),
     "grid_alpha": 0.3,
-    "bode_range": (-1, 3, 500),  # (start_pow, end_pow, num_points)
+    "bode_range": (-1, 3, 500),
     "marker_style": {"color": "black", "linestyle": "--", "alpha": 0.5},
     "marker_text": {
         "x_offset": 0.05,
@@ -41,53 +38,171 @@ PLOT_PARAMS = {
     },
 }
 
-# --- 6. Custom Non-Linear Simulation Settings ---
 CUSTOM_SIM_PARAMS = {
     "dt": 0.001,
     "t_end": 5.0,
-    "step_time": 0.5,  # Time when input steps up
-    "step_magnitude": 1.0,  # Magnitude of input step
-    "initial_state": (1, 1),  # Shape of the initial state vector (rows, cols)
+    "step_time": 0.5,
+    "step_magnitude": 1.0,
+    "initial_state": (1, 1),
 }
 
-# --- 7. Parameter Estimation Demo Settings (Option 6) ---
 ESTIMATION_PARAMS = {
-    # -- Simulation Timing --
-    "dt": 0.001,  # Discrete time step for the estimation loop (s)
-    "t_end": 15.0,  # Total duration of the estimation run (s)
-    # -- The "True" Physical System --
-    # These are the actual values we are trying to estimate.
-    "true_system_params": {
-        "J": 0.02,  # True Rotor Inertia (kg*m^2)
-        "b": 0.2,  # True Viscous Friction (N*m*s)
-        "K": 0.1,  # True Back-EMF/Torque Constant (V/(rad/s) or Nm/A)
-        "R": 2.0,  # True Armature Resistance (Ohms)
-        "L": 0.5,  # True Armature Inductance (H)
-    },
-    # -- EKF Initialization --
-    # Initial guesses for the parameters (intentionally wrong to test convergence).
+    "dt": 0.001,
+    "t_end": 15.0,
+    "true_system_params": {"J": 0.02, "b": 0.2, "K": 0.1, "R": 2.0, "L": 0.5},
     "initial_guess_J": 0.005,
     "initial_guess_b": 0.1,
-    # Scaling factor for the initial Error Covariance Matrix (P).
-    # Higher values imply we are more uncertain about our initial guess.
     "p_init_scale": 0.1,
-    # -- Noise Covariances --
-    # Process Noise (Q) diagonals: [Speed, Current, J_est, b_est]
-    # Represents uncertainty in the model evolution.
     "Q_init": [1e-4, 1e-4, 2e-4, 2e-4],
-    # Measurement Noise (R) diagonals: [Speed, Current]
-    # Represents uncertainty in sensors.
     "R": [0.01, 0.01],
-    # Standard deviation of the random noise added to the simulated sensor readings.
     "sensor_noise_std": 0.05,
-    # -- Adaptive Q Logic --
-    # The demo switches Q matrices to "lock in" parameters after a certain time.
     "adaptive_enabled": True,
-    # Q matrix during the 'Search' phase (allows parameters to change rapidly)
     "Q_search": [1e-4, 1e-4, 5e-4, 5e-4],
-    # Q matrix during the 'Lock-in' phase (trusts the estimated parameters more)
     "Q_lock": [1e-4, 1e-4, 1e-8, 1e-8],
-    # -- Input Signal --
-    "input_amplitude": 5.0,  # Amplitude of the voltage square wave (V)
-    "input_period": 2.0,  # Period of the input square wave (s)
+    "input_amplitude": 5.0,
+    "input_period": 2.0,
 }
+
+"""
+--------------------------------------------------------------------------------
+1. MOTOR_PARAMS (Physical System)
+--------------------------------------------------------------------------------
+These parameters define the physics of the DC Motor plant model.
+Differential Equations:
+    (1) Electrical: V = I*R + L*(dI/dt) + K*omega
+    (2) Mechanical: K*I = J*(domega/dt) + b*omega
+
+Parameters:
+- J (kg*m^2): Rotor Inertia.
+    * Represents the resistance of the rotor to changes in rotation speed.
+    * HIGHER J: Slower acceleration/deceleration; system feels "heavier".
+    * LOWER J: Faster response time; system feels "lighter" and twitchier.
+
+- b (N*m*s): Viscous Friction Coefficient.
+    * Represents energy loss due to friction proportional to speed.
+    * HIGHER b: Lower steady-state speed for the same voltage; more natural damping.
+    * LOWER b: Higher max speed; system coasts longer after power is cut.
+
+- K (V/(rad/s) or Nm/A): Electromotive Force / Torque Constant.
+    * Relates current to torque and speed to back-EMF.
+    * HIGHER K: More torque per amp (stronger acceleration) but also more back-EMF (limits max speed).
+    * LOWER K: Less torque per amp but higher theoretical max speed.
+
+- R (Ohms): Armature Resistance.
+    * Electrical resistance of the motor windings.
+    * HIGHER R: Reduces the stall current; limits max torque; slower electrical response.
+    * LOWER R: Allows higher currents; higher power consumption and torque.
+
+- L (Henries): Armature Inductance.
+    * Electrical inertia of the motor windings.
+    * HIGHER L: Smoothens current spikes; delays torque production (lag).
+    * LOWER L: Current changes instantly with voltage changes.
+
+--------------------------------------------------------------------------------
+2. SIM_PARAMS (Linear Simulation)
+--------------------------------------------------------------------------------
+Settings for the standard Option 1 dashboard simulation.
+
+Parameters:
+- dt (s): Time Step.
+    * The time increment between simulation iterations.
+    * SMALLER dt: Higher accuracy; handles fast dynamics/stiff systems better; slower computation.
+    * LARGER dt: Faster computation; risks instability if dt > system time constants.
+
+- t_end (s): Simulation Duration.
+    * Total length of time to simulate.
+
+- step_volts (V): Input Magnitude.
+    * The voltage applied at t=0 (Step Input).
+    * Changing this tests linearity (in linear models, output scales perfectly; in non-linear, it may saturate).
+
+--------------------------------------------------------------------------------
+3. DISTURBANCE_PARAMS (External Load)
+--------------------------------------------------------------------------------
+Simulates an external torque applied to the motor shaft (e.g., trying to stop it with your hand).
+
+Parameters:
+- enabled (bool): Master switch for disturbance logic.
+- time (s): Onset Time.
+    * The exact moment in the simulation when the load torque is applied.
+- magnitude (Nm): Load Torque.
+    * The amount of opposing force applied. Positive values oppose forward rotation.
+
+--------------------------------------------------------------------------------
+4. CONTROLLERS (PID Tuning)
+--------------------------------------------------------------------------------
+A list of controller configurations to test simultaneously.
+Formula: V = Kp*e + Ki*∫e + Kd*(de/dt)
+
+Parameters:
+- Kp (Proportional):
+    * Reaction to current error.
+    * INCREASING: Faster rise time; reduces steady-state error; increases overshoot.
+- Ki (Integral):
+    * Reaction to accumulated past error.
+    * INCREASING: Eliminates steady-state error; increases overshoot/oscillation; can cause instability.
+- Kd (Derivative):
+    * Reaction to the rate of change of error.
+    * INCREASING: Reduces overshoot; adds damping; slows down response; highly sensitive to noise.
+
+--------------------------------------------------------------------------------
+5. PLOT_PARAMS (Visualization)
+--------------------------------------------------------------------------------
+Settings for the Matplotlib interface.
+
+Parameters:
+- bode_range: (start_power, end_power, num_points).
+    * Defines frequency range 10^start to 10^end for Bode plots.
+
+--------------------------------------------------------------------------------
+6. CUSTOM_SIM_PARAMS (Adaptive Solver)
+--------------------------------------------------------------------------------
+Settings for the RK45 non-linear solver (Option 2).
+
+Parameters:
+- dt: Initial time step guess (solver will adjust this automatically).
+- step_time: Time when the step input triggers.
+- step_magnitude: Amplitude of the input.
+- initial_state: Tuple (rows, cols) defining the state vector shape.
+
+--------------------------------------------------------------------------------
+7. ESTIMATION_PARAMS (Extended Kalman Filter Demo)
+--------------------------------------------------------------------------------
+Configuration for the Option 6 Parameter Estimation experiment.
+
+Simulation Timing:
+- dt (s): Discrete time step for the EKF loop.
+- t_end (s): Total duration of the experiment.
+
+True System (The "Reality"):
+- true_system_params: A dictionary of physical parameters (J, b, K, R, L) used to generate
+  the "real world" data that the EKF will observe.
+
+EKF Initialization (The "Learner"):
+- initial_guess_J: Starting estimate for Inertia. Set widely different from 'true' J to test convergence.
+- initial_guess_b: Starting estimate for Friction.
+- p_init_scale: Initial Uncertainty.
+    * Multiplier for the initial Covariance Matrix P.
+    * HIGH VALUE: "I have no idea what the parameters are" (Filter moves fast).
+    * LOW VALUE: "I am confident in my guess" (Filter is stubborn).
+
+Noise Covariances:
+- Q_init (Process Noise): [Speed, Current, J, b].
+    * How much we think the state changes unpredictably.
+    * High values on J/b tell the filter "Parameters might be changing", allowing it to adapt.
+- R (Measurement Noise): [Speed, Current].
+    * How much noise is in our sensors.
+    * HIGH R: Trust model more (smooth estimate).
+    * LOW R: Trust sensors more (noisy estimate).
+- sensor_noise_std: The actual noise added to the synthetic "real" data.
+
+Adaptive Logic:
+- adaptive_enabled: If True, uses two different Q matrices.
+- Q_search: High-variance Q used early to find parameters quickly.
+- Q_lock: Low-variance Q used late to stabilize the result.
+
+Input Signal:
+- input_amplitude (V): Amplitude of the square wave excitation.
+- input_period (s): Frequency of the excitation.
+    * Constant voltage is bad for estimation; dynamic input is required to make parameters observable.
+"""

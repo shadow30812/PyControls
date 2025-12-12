@@ -8,23 +8,20 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 
-# Ensure local modules are found
 sys.path.append(os.getcwd())
-
 import config
-from core.analysis import get_stability_margins, get_step_metrics
 from core.ekf import ExtendedKalmanFilter
 from core.estimator import KalmanFilter
 from core.math_utils import make_system_func
 from core.solver import ExactSolver, NonlinearSolver
-from core.state_space import StateSpace
 
 
-# --- Dynamic System Loader ---
 def load_available_systems():
     """
-    Scans the 'systems' package for modules and classes that implement
-    the expected interface.
+    Dynamically discovers and loads system classes from the 'systems' package.
+
+    Returns:
+        dict: A dictionary mapping system names to their classes.
     """
     systems = {}
     systems_path = os.path.join(os.getcwd(), "systems")
@@ -34,8 +31,6 @@ def load_available_systems():
         try:
             module = importlib.import_module(module_name)
             for member_name, member_obj in inspect.getmembers(module, inspect.isclass):
-                # Duck Typing: Check if it has the required methods
-                # Note: We still check for old methods to ensure backward compatibility
                 if (
                     hasattr(member_obj, "get_closed_loop_tf")
                     and hasattr(member_obj, "get_disturbance_tf")
@@ -48,6 +43,11 @@ def load_available_systems():
 
 
 class PyControlsApp:
+    """
+    Main Application Controller.
+    Handles user interaction, menu navigation, and simulation orchestration.
+    """
+
     def __init__(self):
         self.available_systems = load_available_systems()
         if not self.available_systems:
@@ -73,9 +73,11 @@ class PyControlsApp:
         self.running = True
 
     def clear_screen(self):
+        """Clears the terminal screen."""
         os.system("cls" if os.name == "nt" else "clear")
 
     def print_header(self):
+        """Prints the application banner and current system parameters."""
         print("\n" + "=" * 60)
         print(f"   PyControls Engineering Suite | System: {self.system_name}   ")
         print("=" * 60)
@@ -88,6 +90,7 @@ class PyControlsApp:
         print("-" * 60)
 
     def main_menu(self):
+        """Displays the main menu loop."""
         self.clear_screen()
         while self.running:
             self.print_header()
@@ -119,6 +122,7 @@ class PyControlsApp:
                 input("Invalid option. Press Enter...")
 
     def switch_system_menu(self):
+        """Menu to switch between available dynamic systems."""
         self.clear_screen()
         print("\nAvailable Systems:")
         names = list(self.available_systems.keys())
@@ -145,6 +149,7 @@ class PyControlsApp:
             pass
 
     def edit_params_menu(self):
+        """Menu to edit the physical parameters of the current system."""
         print(f"\nCurrent Parameters for {self.system_name}:")
         for k, v in self.active_params.items():
             print(f"  [{k}] : {v}")
@@ -161,6 +166,7 @@ class PyControlsApp:
             print("Unknown parameter.")
 
     def edit_disturbance_menu(self):
+        """Menu to configure the external disturbance."""
         print(f"\n[1] Toggle Enable (Current: {self.dist_params['enabled']})")
         print(f"[2] Set Magnitude (Current: {self.dist_params['magnitude']})")
         print(f"[3] Set Time      (Current: {self.dist_params['time']})")
@@ -182,26 +188,31 @@ class PyControlsApp:
                 pass
 
     def simulate_preset_system(self, system_instance, ctrl_config):
+        """
+        Runs the simulation for a specific controller configuration.
+
+        Args:
+            system_instance: The system object to simulate.
+            ctrl_config: Dictionary containing PID gains.
+
+        Returns:
+            tuple: (time_array, real_output_history, estimate_history)
+        """
         dt = self.sim_params["dt"]
         t_end = self.sim_params["t_end"]
 
-        # 1. Setup TRUE System (2-State MIMO: Speed, Current)
         if hasattr(system_instance, "get_state_space"):
             ss_real = system_instance.get_state_space()
             solver_real = ExactSolver(ss_real.A, ss_real.B, ss_real.C, ss_real.D, dt)
         else:
-            # Fallback for old systems (returns empty arrays)
             return np.array([]), np.array([]), np.array([])
 
-        # 2. Setup KALMAN FILTER (3-State Augmented: Speed, Current, Disturbance)
         if hasattr(system_instance, "get_augmented_state_space"):
             ss_aug = system_instance.get_augmented_state_space()
-            # Use solver logic to discretize the Augmented Matrices
             solver_aug_math = ExactSolver(ss_aug.A, ss_aug.B, ss_aug.C, ss_aug.D, dt)
 
-            # Tuning:
-            Q = np.diag([1e-4, 1e-4, 1e-2])  # Process Noise
-            R = np.diag([0.01, 0.01])  # Sensor Noise
+            Q = np.diag([1e-4, 1e-4, 1e-2])
+            R = np.diag([0.01, 0.01])
 
             kf = KalmanFilter(
                 solver_aug_math.Phi, solver_aug_math.Gamma, ss_aug.C, Q, R, x0=[0, 0, 0]
@@ -217,15 +228,12 @@ class PyControlsApp:
         prev_error = 0.0
 
         for t in t_values:
-            # A. Disturbance Logic
             dist_torque = 0.0
             if self.dist_params["enabled"] and t >= self.dist_params["time"]:
                 dist_torque = self.dist_params["magnitude"]
 
-            # B. Controller Step
             ref_speed = self.sim_params["step_volts"] if t > 0 else 0
 
-            # Feedback: Use ESTIMATE if available, else REAL (cheating)
             if kf:
                 speed_feedback = kf.x_hat[0, 0]
             else:
@@ -244,20 +252,15 @@ class PyControlsApp:
 
             voltage = np.clip(voltage, -12, 12)
 
-            # C. Physics Step (Real World)
-            # Input: [Voltage, Disturbance]
             u_real = np.array([[voltage], [dist_torque]])
-            y_real_vector = solver_real.step(u_real)  # [Speed, Current]
+            y_real_vector = solver_real.step(u_real)
 
-            # D. Sensor Noise
             noise = np.random.normal(0, 0.1, size=2)
             y_meas = y_real_vector + noise
 
-            # E. Kalman Filter Step
             if kf:
-                # Filter sees: [Voltage] only
                 u_kf = np.array([[voltage]])
-                x_est = kf.update(u_kf, y_meas)  # [Speed, Current, Dist_Est]
+                x_est = kf.update(u_kf, y_meas)
                 x_est_hist.append(x_est)
 
             y_real_hist.append(y_real_vector)
@@ -265,6 +268,7 @@ class PyControlsApp:
         return t_values, np.array(y_real_hist), np.array(x_est_hist)
 
     def run_preset_dashboard(self):
+        """Executes the standard simulation with multiple controllers and plots results."""
         print(f"\nInitializing MIMO Simulation for {self.system_name}...")
 
         try:
@@ -302,13 +306,10 @@ class PyControlsApp:
                         alpha=0.6,
                     )
 
-        # Plot Styling
         if self.dist_params["enabled"]:
             t_dist = self.dist_params["time"]
-            # Get style from config
             style = config.PLOT_PARAMS["marker_style"]
 
-            # Add vertical line to Speed, Current and Kalman plots
             ax_speed.axvline(x=t_dist, **style)
             ax_current.axvline(x=t_dist, **style)
             ax_dist.axvline(x=t_dist, **style)
@@ -343,7 +344,6 @@ class PyControlsApp:
             )
             ax_dist.legend(fontsize=8)
 
-        # Bode Plot (Direct Matrix Method)
         if hasattr(current_system, "get_state_space"):
             ss = current_system.get_state_space()
             w = np.logspace(-1, 3, 500)
@@ -358,6 +358,7 @@ class PyControlsApp:
         plt.show()
 
     def run_custom_simulation(self):
+        """Runs the adaptive step-size solver on user-defined non-linear equations."""
         print("\n--- Custom Non-Linear Simulation (Adaptive RK45) ---")
         eqn = input("Enter dx/dt = f(t, x, u): ").strip()
         try:
@@ -388,32 +389,27 @@ class PyControlsApp:
             print(f"\nError: {e}")
 
     def run_parameter_estimation(self):
+        """
+        Runs the Extended Kalman Filter (EKF) demo.
+        Estimates the system's inertia (J) and friction (b) in real-time.
+        """
         print("\n--- Parameter Estimation Demo (EKF) ---")
         print("Goal: Estimate Inertia (J) and Friction (b) from scratch.")
 
-        # Load parameters from config
         est_cfg = config.ESTIMATION_PARAMS
         dt = est_cfg["dt"]
         t_end = est_cfg["t_end"]
         true_params = est_cfg["true_system_params"]
 
-        # 1. Setup the TRUE System (The Reality)
-        # Use parameters defined in config
         true_motor = self.SystemClass(**true_params)
         ss_true = true_motor.get_state_space()
         solver_true = ExactSolver(ss_true.A, ss_true.B, ss_true.C, ss_true.D, dt=dt)
 
-        # 2. Setup the EKF (The Learner)
-        # Function that maps [w, i, J, b] -> [dot_w, dot_i, 0, 0]
         f_dyn = true_motor.get_parameter_estimation_func()
 
-        # Measurement function: We measure Speed and Current [w, i]
-        # h(x) = [x[0], x[1]]
         def h_meas(x):
             return x[:2]
 
-        # Initial Guess (configured in config.py)
-        # The EKF uses Log(J) and Log(b) in the state vector, so we apply log here.
         x0_est = [
             0,
             0,
@@ -421,15 +417,13 @@ class PyControlsApp:
             np.log(est_cfg["initial_guess_b"]),
         ]
 
-        # Tuning
-        Q = np.diag(est_cfg["Q_init"])  # Process noise
-        R = np.diag(est_cfg["R"])  # Sensor noise
+        Q = np.diag(est_cfg["Q_init"])
+        R = np.diag(est_cfg["R"])
 
         ekf = ExtendedKalmanFilter(
             f_dyn, h_meas, Q, R, x0_est, p_init_scale=est_cfg["p_init_scale"]
         )
 
-        # 3. Simulation Loop
         t_vals = np.linspace(0, t_end, int(t_end / dt))
 
         J_est_hist = []
@@ -446,36 +440,27 @@ class PyControlsApp:
         noise_std = est_cfg["sensor_noise_std"]
 
         for t in t_vals:
-            # Input Square Wave
             if (t % period) < (period / 2.0):
                 volts = amp
             else:
                 volts = 0.0
-            u = np.array([[volts], [0]])  # True system has Load input too (0)
+            u = np.array([[volts], [0]])
 
-            # Adaptive Q Logic
             if est_cfg["adaptive_enabled"]:
                 phi = (1 + np.sqrt(5)) / 2
                 if t < t_end / phi:
-                    # Search Mode
                     ekf.Q = np.diag(est_cfg["Q_search"])
                 else:
-                    # Lock-in Mode
                     ekf.Q = np.diag(est_cfg["Q_lock"])
 
-            # A. Real World Step
-            y_true = solver_true.step(u)  # [Speed, Current]
+            y_true = solver_true.step(u)
             y_meas = np.array(y_true).reshape(-1, 1) + np.random.normal(
                 0, noise_std, (2, 1)
             )
 
-            # B. EKF Step
-            # Predict
             ekf.predict(np.array([[volts]]), dt)
-            # Correct
             x_hat = ekf.update(y_meas)
 
-            # Store Data
             speed_true.append(y_true[0])
             speed_est.append(x_hat[0])
             current_true.append(y_true[1])
@@ -483,23 +468,19 @@ class PyControlsApp:
             J_est_hist.append(np.exp(x_hat[2]))
             b_est_hist.append(np.exp(x_hat[3]))
 
-        # 4. Plotting
         fig, axes = plt.subplots(2, 2, figsize=(12, 8))
 
-        # Speed Convergence
         axes[0, 0].plot(t_vals, speed_true, "k-", label="True Speed")
         axes[0, 0].plot(t_vals, speed_est, "r--", label="EKF Est")
         axes[0, 0].set_title("State Tracking: Speed")
         axes[0, 0].legend()
 
-        # Current Convergence
         axes[0, 1].plot(t_vals, current_true, "k-", label="True Current")
         axes[0, 1].plot(t_vals, current_est, "m--", label="EKF Current")
         axes[0, 1].set_title("State Tracking: Current")
         axes[0, 1].legend()
         axes[0, 1].grid(True)
 
-        # Inertia Estimation
         true_J = true_params["J"]
         axes[1, 0].plot(t_vals, J_est_hist, "b-", label="Est J")
         axes[1, 0].axhline(true_J, color="k", linestyle=":", label=f"True J ({true_J})")
@@ -507,7 +488,6 @@ class PyControlsApp:
         axes[1, 0].legend()
         axes[1, 0].grid(True)
 
-        # Friction Estimation
         true_b = true_params["b"]
         axes[1, 1].plot(t_vals, b_est_hist, "g-", label="Est b")
         axes[1, 1].axhline(true_b, color="k", linestyle=":", label=f"True b ({true_b})")

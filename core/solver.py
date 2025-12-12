@@ -1,13 +1,14 @@
 import numpy as np
 
 
-# --- 1. Matrix Operations ---
 def manual_matrix_exp(A, order=20):
     """
-    Computes matrix exponential using Scaling and Squaring with Taylor Series.
-    e^A = (e^(A/2^s))^(2^s)
+    Computes the matrix exponential e^A using Scaling and Squaring with Taylor Series.
+    Formula: e^A = (e^(A/2^s))^(2^s)
+
+    This implementation does not rely on scipy.linalg.expm, keeping the library
+    dependency-free for core math.
     """
-    # 1. Scaling: Find s such that norm(A) is small (e.g., < 0.5)
     norm_A = np.max(np.sum(np.abs(A), axis=1))
     s = 0
     while norm_A > 0.5:
@@ -16,8 +17,6 @@ def manual_matrix_exp(A, order=20):
 
     A_scaled = A / (2**s)
 
-    # 2. Taylor Series Approximation for small A_scaled
-    # E = I + A + A^2/2! + ...
     E = np.eye(A.shape[0])
     term = np.eye(A.shape[0])
 
@@ -25,34 +24,35 @@ def manual_matrix_exp(A, order=20):
         term = term @ A_scaled / k
         E = E + term
 
-    # 3. Squaring: Square the result s times
     for _ in range(s):
         E = E @ E
 
     return E
 
 
-# --- 2. Solvers ---
 class ExactSolver:
     """
-    Exact Discretization (Zero-Order Hold) for Linear Systems.
-    Uses custom matrix exponential implementation.
+    Exact Discrete-Time Solver for Linear Time-Invariant (LTI) Systems.
+    Uses the Zero-Order Hold (ZOH) method to discretize continuous matrices.
     """
 
     def __init__(self, A, B, C, D, dt):
-        # Force inputs to be at least 2D matrices to support @ operator
-        # This handles the case where D is a scalar (SISO)
+        """
+        Computes the discrete transition matrices (Phi and Gamma) upon initialization.
+
+        Continuous: dx/dt = Ax + Bu
+        Discrete:   x[k+1] = Phi * x[k] + Gamma * u[k]
+
+        Phi = e^(A*dt)
+        Gamma = Integral(e^(A*tau) * B) from 0 to dt
+        """
         self.A = np.atleast_2d(A)
         self.B = np.atleast_2d(B)
         self.C = np.atleast_2d(C)
         self.D = np.atleast_2d(D)
 
-        # Initialize state as a vertical vector (n_states, 1)
         self.x = np.zeros((self.A.shape[0], 1))
 
-        # Build combined matrix M for simultaneous Phi and Gamma calc
-        # [ A  B ]
-        # [ 0  0 ]
         n_states = self.A.shape[0]
         n_inputs = self.B.shape[1]
 
@@ -60,44 +60,38 @@ class ExactSolver:
         bottom = np.zeros((n_inputs, n_states + n_inputs))
         M = np.vstack((top, bottom))
 
-        # Compute Matrix Exp manually
         M_exp = manual_matrix_exp(M * dt)
 
-        # Extract discrete matrices
         self.Phi = M_exp[:n_states, :n_states]
         self.Gamma = M_exp[:n_states, n_states:]
 
     def step(self, u_input):
         """
-        Advances one time step.
-        u_input: Can be scalar (SISO) or list/array (MIMO).
-        Returns: y (scalar or array)
+        Advances the simulation by one discrete time step.
         """
-        # Ensure u_input is a column vector (m, 1)
         u = np.array(u_input, dtype=float)
         if u.ndim == 0:
             u = u.reshape(1, 1)
         elif u.ndim == 1:
             u = u.reshape(-1, 1)
 
-        # x[k+1] = Phi * x[k] + Gamma * u[k]
         self.x = self.Phi @ self.x + self.Gamma @ u
-
-        # y[k] = C * x[k] + D * u[k]
         y = self.C @ self.x + self.D @ u
 
-        # Return scalar if it's a 1x1 result (SISO compatibility), else return vector
         if y.size == 1:
             return y.item()
-        return y.flatten()  # Return 1D array for easier plotting
+        return y.flatten()
 
     def reset(self):
+        """Resets the internal state to zero."""
         self.x = np.zeros_like(self.x)
 
 
 class NonlinearSolver:
     """
-    Adaptive Step-Size Solver using Manual Dormand-Prince (RK45/RK5(4)7M) method.
+    Adaptive Step-Size Solver for Non-Linear Systems.
+    Implements the Dormand-Prince (RK5(4)) method, often known as RK45.
+    Adjusts the integration step size (dt) automatically based on the local error estimate.
     """
 
     def __init__(self, dynamics_func, dt_min=1e-5, dt_max=0.5, tol=1e-6):
@@ -106,7 +100,6 @@ class NonlinearSolver:
         self.dt_max = dt_max
         self.tol = tol
 
-        # Dormand-Prince Coefficients (RK5(4))
         self.c = np.array([0, 1 / 5, 3 / 10, 4 / 5, 8 / 9, 1, 1])
         self.a = [
             [],
@@ -119,7 +112,7 @@ class NonlinearSolver:
         ]
         self.b = np.array(
             [35 / 384, 0, 500 / 1113, 125 / 192, -2187 / 6784, 11 / 84, 0]
-        )  # Order 5
+        )
         self.b_hat = np.array(
             [
                 5179 / 57600,
@@ -130,29 +123,34 @@ class NonlinearSolver:
                 187 / 2100,
                 1 / 40,
             ]
-        )  # Order 4
+        )
 
     def solve_adaptive(self, t_end, x0, u_func=None):
+        """
+        Solves the IVP from t=0 to t_end.
+
+        Args:
+            t_end: Final simulation time.
+            x0: Initial state vector.
+            u_func: Optional function u(t) for time-varying inputs.
+
+        Returns:
+            tuple: (time_array, state_history_array)
+        """
         t = 0.0
         x = x0.astype(float)
-        dt = 0.001  # Initial guess
+        dt = 0.001
 
         t_hist = [t]
         x_hist = [x]
 
         while t < t_end:
-            # Cap dt to hit t_end exactly
             if t + dt > t_end:
                 dt = t_end - t
 
-            # 1. Compute Stages k1-k7 (7M)
-            # k needs to be (7, n_states)
             k = np.zeros((7, x.shape[0]))
-
-            # Get input u at current t
             u_val = u_func(t) if u_func else 0.0
 
-            # Initial slope
             k[0] = self.f(t, x, u_val).flatten()
 
             for i in range(1, 7):
@@ -164,23 +162,17 @@ class NonlinearSolver:
                 u_inner = u_func(t_inner) if u_func else 0.0
                 k[i] = self.f(t_inner, x + dt * dx_sum, u_inner).flatten()
 
-            # 2. Compute Updates (Order 5 and Order 4)
-            # self.b is (7,), k is (7, n). b @ k does dot product over axis 0 -> (n,)
             x_5 = x + dt * (self.b @ k)
             x_4 = x + dt * (self.b_hat @ k)
 
-            # 3. Error Estimation
             error = np.max(np.abs(x_5 - x_4))
 
-            # 4. Step Size Control
             if error < self.tol or dt <= self.dt_min:
-                # Accept Step
                 t += dt
                 x = x_5
                 t_hist.append(t)
                 x_hist.append(x)
 
-            # Calculate new dt for next step (or retry)
             if error == 0:
                 dt_new = dt * 2
             else:
