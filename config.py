@@ -7,6 +7,16 @@ preferences."""
 
 MOTOR_PARAMS = {"J": 0.02, "b": 0.2, "K": 0.1, "R": 2.0, "L": 0.5}
 
+PENDULUM_PARAMS = {
+    "M": 1.0,  # cart mass (kg)
+    "m": 0.1,  # pendulum mass (kg)
+    "l": 0.5,  # pendulum length (m)
+    "b": 0.05,  # damping coefficient
+    "g": 9.81,  # gravity (m/s^2)
+    "theta_limit": 0.5,  # radians
+}
+
+
 SIM_PARAMS = {
     "dt": 0.001,
     "t_end": 3.0,

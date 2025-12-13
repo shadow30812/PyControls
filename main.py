@@ -17,6 +17,8 @@ from core.mpc import ModelPredictiveControl
 from core.solver import ExactSolver, NonlinearSolver
 from core.ukf import UnscentedKalmanFilter
 from exit import flush, kill, stop
+from modules.interactive_lab import InteractiveLab, simple_dc_motor_pid
+from system_registry import SYSTEM_REGISTRY
 
 
 def load_available_systems():
@@ -57,18 +59,26 @@ class PyControlsApp:
             print("Error: No valid system classes found in systems/ folder.")
             sys.exit(1)
 
-        self.system_name = (
-            "DCMotor"
-            if "DCMotor" in self.available_systems
-            else next(iter(self.available_systems))
-        )
-        self.SystemClass = self.available_systems[self.system_name]
+        self.current_system_id = "dc_motor"
+        self.current_descriptor = SYSTEM_REGISTRY[self.current_system_id]
 
-        temp_instance = self.SystemClass()
-        self.active_params = temp_instance.params.copy()
+        self.system_name = self.current_descriptor.display_name.replace(" ", "")
+        self.SystemClass = self.current_descriptor.system_class
 
-        if self.system_name == "DCMotor" and hasattr(config, "MOTOR_PARAMS"):
+        if self.SystemClass is not None:
+            temp_instance = self.SystemClass()
+            self.active_params = temp_instance.params.copy()
+        else:
+            self.active_params = {}
+
+        if self.current_system_id == "dc_motor" and hasattr(config, "MOTOR_PARAMS"):
             self.active_params.update(config.MOTOR_PARAMS)
+
+        self.system = (
+            self.current_descriptor.system_class()
+            if self.current_descriptor.system_class is not None
+            else None
+        )
 
         self.controllers = config.CONTROLLERS.copy()
         self.sim_params = config.SIM_PARAMS.copy()
@@ -105,6 +115,7 @@ class PyControlsApp:
             print("[6] Run Parameter Estimation Demo (EKF)")
             print("[7] Run Nonlinear State Est. Demo (UKF)")
             print("[8] Run Model Predictive Control Demo (MPC)")
+            print("[9] Interactive Lab")
             print("[q] Exit")
 
             choice = input("\nSelect Option: ").strip()
@@ -125,6 +136,8 @@ class PyControlsApp:
                 self.run_ukf_demo()
             elif choice == "8":
                 self.run_mpc_demo()
+            elif choice == "9":
+                self.run_interactive_lab()
             elif choice == "q":
                 self.running = False
             else:
@@ -134,24 +147,38 @@ class PyControlsApp:
         """Menu to switch between available dynamic systems."""
         self.clear_screen()
         print("\nAvailable Systems:")
-        names = list(self.available_systems.keys())
-        for i, name in enumerate(names):
-            print(f"[{i + 1}] {name}")
+
+        system_ids = list(SYSTEM_REGISTRY.keys())
+        for i, sys_id in enumerate(system_ids):
+            desc = SYSTEM_REGISTRY[sys_id]
+            print(f"[{i + 1}] {desc.display_name}")
+
         print("[b] Back")
-        sel = input("\nSelect System ID: ").strip()
+        sel = input("\nSelect System: ").strip()
+
         if sel == "b":
             return
+
         try:
             idx = int(sel) - 1
-            if 0 <= idx < len(names):
-                new_name = names[idx]
-                if new_name != self.system_name:
-                    self.system_name = new_name
-                    self.SystemClass = self.available_systems[new_name]
-                    self.active_params = self.SystemClass().params.copy()
-                    if new_name == "DCMotor" and hasattr(config, "MOTOR_PARAMS"):
-                        self.active_params.update(config.MOTOR_PARAMS)
-                    print(f"Switched to {new_name}")
+            if 0 <= idx < len(system_ids):
+                new_id = system_ids[idx]
+
+                if new_id != self.current_system_id:
+                    self.current_system_id = new_id
+                    self.current_descriptor = SYSTEM_REGISTRY[new_id]
+
+                    self.SystemClass = self.current_descriptor.system_class
+                    self.system_name = self.current_descriptor.display_name.replace(
+                        " ", ""
+                    )
+
+                    if self.SystemClass is not None:
+                        self.system = self.SystemClass()
+                    else:
+                        self.system = None
+
+                    print(f"\nSwitched to {self.current_descriptor.display_name}")
                     time.sleep(1)
                     self.clear_screen()
         except ValueError:
@@ -207,6 +234,12 @@ class PyControlsApp:
         Returns:
             tuple: (time_array, real_output_history, estimate_history)
         """
+
+        if not self.current_descriptor.supports_analysis:
+            print("\nAnalysis & metrics are only available for linear systems.")
+            input("Press Enter to return to menu...")
+            return
+
         dt = self.sim_params["dt"]
         t_end = self.sim_params["t_end"]
 
@@ -278,6 +311,12 @@ class PyControlsApp:
 
     def run_preset_dashboard(self):
         """Executes the standard simulation with multiple controllers and plots results."""
+
+        if not self.current_descriptor.supports_analysis:
+            print("\nAnalysis & metrics are only available for linear systems.")
+            input("Press Enter to return to menu...")
+            return
+
         print(f"\nInitializing MIMO Simulation for {self.system_name}...")
 
         try:
@@ -403,6 +442,12 @@ class PyControlsApp:
         Runs the Extended Kalman Filter (EKF) demo.
         Estimates the system's inertia (J) and friction (b) in real-time.
         """
+
+        if not self.current_descriptor.supports_estimation:
+            print("\nEstimation is not supported for this system.")
+            input("Press Enter to return to menu...")
+            return
+
         print("\n--- Parameter Estimation Demo (EKF) ---")
         print("Goal: Estimate Inertia (J) and Friction (b) from scratch.")
 
@@ -511,6 +556,12 @@ class PyControlsApp:
 
     def run_ukf_demo(self):
         """Runs the Unscented Kalman Filter demo."""
+
+        if not self.current_descriptor.supports_estimation:
+            print("\nEstimation is not supported for this system.")
+            input("Press Enter to return to menu...")
+            return
+
         print("\n--- Non-Linear State Estimation (UKF) ---")
 
         cfg = config.UKF_PARAMS
@@ -576,6 +627,12 @@ class PyControlsApp:
 
     def run_mpc_demo(self):
         """Runs the Model Predictive Control demo."""
+
+        if not self.current_descriptor.supports_mpc:
+            print("\nMPC is not available for this system.")
+            input("Press Enter to return to menu...")
+            return
+
         print("\n--- Model Predictive Control (MPC) ---")
 
         cfg = config.MPC_PARAMS
@@ -642,6 +699,86 @@ class PyControlsApp:
 
         plt.tight_layout()
         plt.show()
+
+    def run_interactive_lab(self):
+        if not self.current_descriptor.supports_interactive_lab:
+            print("\nInteractive Lab not supported for this system.")
+            input("Press Enter to continue...")
+            return
+
+        if self.current_system_id == "dc_motor":
+            params = config.MOTOR_PARAMS
+        elif self.current_system_id == "pendulum":
+            params = config.PENDULUM_PARAMS
+        else:
+            params = {}
+
+        lab = InteractiveLab(
+            system_descriptor=self.current_descriptor,
+            params=params,
+            dt=0.01,
+        )
+
+        lab.initialize()
+        lab.init_visualization()
+
+        if self.current_system_id == "dc_motor":
+            controller = simple_dc_motor_pid(omega_ref=1.0, Kp=2.0)
+            lab.set_auto_controller(controller)
+
+        print("\nInteractive Lab running (headless mode).")
+        print(f"Control mode: {lab.control_mode}")
+        print("Press Ctrl+C to stop.\n")
+
+        try:
+            if lab.control_mode == "MANUAL":
+                print("\nControls:")
+                print("  a/d : decrease/increase input")
+                print("  s   : zero input")
+                print("  m   : manual mode")
+                print("  o   : auto mode")
+                print("  q   : quit\n")
+
+            else:
+                print("\nAUTO mode enabled.")
+                print("Press Ctrl+C to stop or wait for completion.\n")
+
+            while lab.status == "RUNNING":
+                lab.step()
+                lab.update_visualization()
+                time.sleep(lab.dt)
+                if lab.descriptor.system_id == "dc_motor":
+                    omega, current = lab.state
+                    print(
+                        f"\rω={omega:.2f}, i={current:.2f}, u={lab.manual_input:.2f}",
+                        end="",
+                    )
+                elif lab.descriptor.system_id == "pendulum":
+                    theta, theta_dot = lab.state
+                    print(
+                        f"\rθ={theta:.3f}, θ̇={theta_dot:.3f}, u={lab.manual_input:.2f}",
+                        end="",
+                    )
+
+            plt.ioff()
+            plt.show()
+
+            print(f"Lab finished with status: {lab.status}")
+            if lab.failure_reason:
+                print(f"Reason: {lab.failure_reason}")
+
+        except KeyboardInterrupt:
+            pass
+        except EOFError:
+            print("\n\nClosing the terminal...")
+            time.sleep(0.1)
+            kill()
+
+        print(f"\nLab finished with status: {lab.status}")
+        if lab.failure_reason:
+            print(f"Reason: {lab.failure_reason}")
+
+        input("\nPress Enter to return to menu...")
 
 
 if __name__ == "__main__":
