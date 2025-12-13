@@ -41,18 +41,15 @@ class TestCoreModels(unittest.TestCase):
         self.assertEqual(ss.n_states, 2)
 
     def test_ss_init_invalid_shapes(self):
-        """Updated to catch the new DimensionMismatchError."""
-        # Non-square A
+        """Catches DimensionMismatchError."""
         with self.assertRaises(DimensionMismatchError):
             StateSpace(
                 np.ones((2, 3)), np.zeros((2, 1)), np.zeros((1, 2)), np.zeros((1, 1))
             )
 
-        # B mismatch
         with self.assertRaises(DimensionMismatchError):
             StateSpace(np.eye(2), np.zeros((3, 1)), np.zeros((1, 2)), np.zeros((1, 1)))
 
-        # C mismatch
         with self.assertRaises(DimensionMismatchError):
             StateSpace(np.eye(2), np.zeros((2, 1)), np.zeros((1, 3)), np.zeros((1, 1)))
 

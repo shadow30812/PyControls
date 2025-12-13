@@ -13,7 +13,9 @@ import config
 from core.ekf import ExtendedKalmanFilter
 from core.estimator import KalmanFilter
 from core.math_utils import make_system_func
+from core.mpc import ModelPredictiveControl
 from core.solver import ExactSolver, NonlinearSolver
+from core.ukf import UnscentedKalmanFilter
 from exit import flush, kill, stop
 
 
@@ -101,6 +103,8 @@ class PyControlsApp:
             print("[4] Edit Disturbance Settings")
             print("[5] Switch Active System")
             print("[6] Run Parameter Estimation Demo (EKF)")
+            print("[7] Run Nonlinear State Est. Demo (UKF)")
+            print("[8] Run Model Predictive Control Demo (MPC)")
             print("[q] Exit")
 
             choice = input("\nSelect Option: ").strip()
@@ -117,6 +121,10 @@ class PyControlsApp:
                 self.switch_system_menu()
             elif choice == "6":
                 self.run_parameter_estimation()
+            elif choice == "7":
+                self.run_ukf_demo()
+            elif choice == "8":
+                self.run_mpc_demo()
             elif choice == "q":
                 self.running = False
             else:
@@ -476,6 +484,7 @@ class PyControlsApp:
         axes[0, 0].plot(t_vals, speed_est, "r--", label="EKF Est")
         axes[0, 0].set_title("State Tracking: Speed")
         axes[0, 0].legend()
+        axes[0, 0].grid(True)
 
         axes[0, 1].plot(t_vals, current_true, "k-", label="True Current")
         axes[0, 1].plot(t_vals, current_est, "m--", label="EKF Current")
@@ -496,6 +505,138 @@ class PyControlsApp:
         axes[1, 1].set_title("Parameter Estimation: Friction (b)")
         axes[1, 1].legend()
         axes[1, 1].grid(True)
+
+        plt.tight_layout()
+        plt.show()
+
+    def run_ukf_demo(self):
+        """Runs the Unscented Kalman Filter demo."""
+        print("\n--- Non-Linear State Estimation (UKF) ---")
+
+        cfg = config.UKF_PARAMS
+        dt = cfg["dt"]
+
+        def pendulum_dynamics(x, u, dt):
+            g = 9.81
+            L = 1.0
+            theta, omega = x
+            theta_next = theta + omega * dt
+            omega_next = omega - (g / L) * np.sin(theta) * dt
+            return np.array([theta_next, omega_next])
+
+        def measure(x):
+            return np.array([x[0]])
+
+        x0 = [np.pi / 2, 0]
+        P0 = np.eye(2) * 0.1
+        Q = np.diag(cfg["Q"])
+        R = np.diag(cfg["R"])
+
+        ukf = UnscentedKalmanFilter(
+            pendulum_dynamics,
+            measure,
+            Q,
+            R,
+            x0,
+            P0,
+            alpha=cfg["alpha"],
+            beta=cfg["beta"],
+            kappa=cfg["kappa"],
+        )
+
+        t_vals = np.arange(0, cfg["t_end"], dt)
+        true_states = []
+        est_states = []
+
+        curr_x = np.array(x0)
+
+        print("Simulating Pendulum...")
+        for t in t_vals:
+            curr_x = pendulum_dynamics(curr_x, 0, dt)
+            true_states.append(curr_x)
+
+            z = np.array([curr_x[0]]) + np.random.normal(0, cfg["noise_std"])
+
+            ukf.predict(0, dt)
+            est_x = ukf.update(z)
+            est_states.append(est_x)
+
+        true_states = np.array(true_states)
+        est_states = np.array(est_states)
+
+        plt.figure(figsize=(10, 6))
+        plt.plot(t_vals, true_states[:, 0], "k-", label="True Angle")
+        plt.plot(t_vals, est_states[:, 0], "r--", label="UKF Angle")
+        plt.plot(t_vals, true_states[:, 1], "g-", alpha=0.5, label="True Velocity")
+        plt.plot(t_vals, est_states[:, 1], "b--", alpha=0.5, label="UKF Velocity")
+        plt.title("UKF Nonlinear Estimation (Pendulum)")
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
+    def run_mpc_demo(self):
+        """Runs the Model Predictive Control demo."""
+        print("\n--- Model Predictive Control (MPC) ---")
+
+        cfg = config.MPC_PARAMS
+        dt = cfg["dt"]
+
+        def simple_model(x, u, dt):
+            return 0.9 * x + u * dt
+
+        x0 = np.array([0.0])
+        Q = np.diag([cfg["Q_weight"][0]])
+        R = np.diag(cfg["R_weight"])
+
+        mpc = ModelPredictiveControl(
+            simple_model,
+            x0,
+            horizon=cfg["horizon"],
+            dt=dt,
+            Q=Q,
+            R=R,
+            u_min=cfg["u_min"],
+            u_max=cfg["u_max"],
+        )
+
+        ref = np.array([10.0])
+
+        t_vals = np.arange(0, cfg["t_end"], dt)
+        x_hist = []
+        u_hist = []
+
+        curr_x = x0
+
+        print("Optimizing Control Trajectories...")
+        for t in t_vals:
+            u_opt = mpc.optimize(
+                curr_x,
+                ref,
+                learning_rate=cfg["learning_rate"],
+                iterations=cfg["iterations"],
+            )
+
+            curr_x = simple_model(curr_x, u_opt, dt)
+
+            x_hist.append(curr_x[0])
+            u_hist.append(u_opt[0])
+
+        plt.figure(figsize=(10, 8))
+
+        plt.subplot(2, 1, 1)
+        plt.plot(t_vals, x_hist, "b-", label="System Output")
+        plt.axhline(ref[0], color="k", linestyle="--", label="Setpoint")
+        plt.title("MPC Tracking Performance")
+        plt.legend()
+        plt.grid()
+
+        plt.subplot(2, 1, 2)
+        plt.step(t_vals, u_hist, "r-", label="Control Input (u)")
+        plt.axhline(cfg["u_max"], color="k", linestyle=":", label="Limits")
+        plt.axhline(cfg["u_min"], color="k", linestyle=":")
+        plt.title("Control Effort (Constrained)")
+        plt.legend()
+        plt.grid()
 
         plt.tight_layout()
         plt.show()

@@ -63,6 +63,29 @@ ESTIMATION_PARAMS = {
     "input_period": 2.0,
 }
 
+UKF_PARAMS = {
+    "dt": 0.01,
+    "t_end": 10.0,
+    "noise_std": 0.1,
+    "Q": [0.01, 0.01],  # Process noise
+    "R": [0.1],  # Measurement noise
+    "alpha": 1e-3,
+    "beta": 2.0,
+    "kappa": 0.0,
+}
+
+MPC_PARAMS = {
+    "dt": 0.05,  # Larger dt for prediction horizon
+    "t_end": 10.0,
+    "horizon": 20,  # Look 20 steps ahead (1.0 sec)
+    "Q_weight": [10.0, 0.0],  # Penalty on [Speed Error, Current Error]
+    "R_weight": [0.1],  # Penalty on Control Effort
+    "u_min": -12.0,
+    "u_max": 12.0,
+    "learning_rate": 0.5,
+    "iterations": 20,  # Optimization iterations per step
+}
+
 """
 --------------------------------------------------------------------------------
 1. MOTOR_PARAMS (Physical System)
@@ -205,4 +228,18 @@ Input Signal:
 - input_amplitude (V): Amplitude of the square wave excitation.
 - input_period (s): Frequency of the excitation.
     * Constant voltage is bad for estimation; dynamic input is required to make parameters observable.
+
+--------------------------------------------------------------------------------
+8. UKF_PARAMS (Unscented Kalman Filter)
+--------------------------------------------------------------------------------
+- alpha, beta, kappa: Parameters determining the spread of sigma points.
+  Standard values: alpha=1e-3, beta=2 (Gaussian), kappa=0.
+
+--------------------------------------------------------------------------------
+9. MPC_PARAMS (Model Predictive Control)
+--------------------------------------------------------------------------------
+- horizon: How many steps into the future the controller looks.
+- Q_weight: Penalty for state deviation from setpoint. High value = Tight tracking.
+- R_weight: Penalty for using voltage. High value = Lazy controller / Save energy.
+- learning_rate: For the internal gradient descent optimizer.
 """

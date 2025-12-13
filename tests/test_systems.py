@@ -2,7 +2,6 @@ import unittest
 
 import numpy as np
 
-from core.transfer_function import TransferFunction
 from systems.dc_motor import DCMotor
 
 
@@ -35,7 +34,7 @@ class TestDCMotor(unittest.TestCase):
 
     def test_physics_forward_motion(self):
         A, B = self.ss.A, self.ss.B
-        u = np.array([[10], [0]])  # 10V
+        u = np.array([[10], [0]])
         x_ss = -np.linalg.inv(A) @ B @ u
         self.assertGreater(x_ss[0, 0], 0)
 
@@ -59,22 +58,18 @@ class TestDCMotor(unittest.TestCase):
 
     def test_param_estimation_dynamics_vectorization(self):
         """
-        NEW: Test if the dynamics function supports broadcasting.
+        Test if the dynamics function supports broadcasting.
         This is crucial for the vectorized EKF Jacobian calculation.
         """
         f = self.motor.get_parameter_estimation_func()
 
-        # Create a batch of 10 state vectors (4, 10)
-        # e.g., simulating 10 different particles at once
         x_batch = np.ones((4, 10))
-        u_batch = np.ones((1, 1))  # Scalar control applied to all
+        u_batch = np.ones((1, 1))
 
         dx_batch = f(x_batch, u_batch)
 
-        # Output should maintain the batch dimension (4, 10)
         self.assertEqual(dx_batch.shape, (4, 10))
 
-        # Verify calculation is consistent across batch
         first_col = dx_batch[:, 0]
         last_col = dx_batch[:, -1]
         np.testing.assert_array_almost_equal(first_col, last_col)

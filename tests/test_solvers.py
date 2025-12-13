@@ -19,7 +19,6 @@ class TestSolvers(unittest.TestCase):
         C = [[1]]
         D = [[0]]
         dt = 0.1
-        # This calls the JIT-compiled manual_matrix_exp
         s = ExactSolver(A, B, C, D, dt)
 
         self.assertEqual(s.Phi[0, 0], 1.0)
@@ -67,12 +66,8 @@ class TestSolvers(unittest.TestCase):
         We use a system size > 1 to ensure matrix ops work.
         """
 
-        # 3-State Decay: x1'=-x1, x2'=-2x2, x3'=-3x3
         def decay_3d(t, x, u):
-            # x is (3, 1) or (3,)
-            # returns (3,)
             rates = np.array([-1, -2, -3])
-            # Ensure proper broadcasting if x comes in as (3, 1)
             if x.ndim == 2:
                 x = x.flatten()
             return rates * x

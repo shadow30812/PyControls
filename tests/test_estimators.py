@@ -54,8 +54,6 @@ class TestEstimators(unittest.TestCase):
         h = lambda x: x
         ekf = ExtendedKalmanFilter(f_vectorizable, h, np.eye(1), np.eye(1), [0])
 
-        # Evaluate at x=3. J should be 2*3 = 6.
-        # This calls compute_jacobian, which should use the vectorized block
         J = ekf.compute_jacobian(f_vectorizable, np.array([3.0]))
         self.assertAlmostEqual(J[0, 0], 6.0)
 
@@ -66,7 +64,6 @@ class TestEstimators(unittest.TestCase):
         """
 
         def f_non_vectorizable(x, u=None):
-            # Explicit check that fails if x is a matrix (perturbation batch)
             if np.ndim(x) > 1 and x.shape[1] > 1:
                 raise ValueError("I do not support matrices!")
             return x**2
@@ -74,7 +71,6 @@ class TestEstimators(unittest.TestCase):
         h = lambda x: x
         ekf = ExtendedKalmanFilter(f_non_vectorizable, h, np.eye(1), np.eye(1), [0])
 
-        # Evaluate at x=3. J should be 6.
         J = ekf.compute_jacobian(f_non_vectorizable, np.array([3.0]))
         self.assertAlmostEqual(J[0, 0], 6.0)
 

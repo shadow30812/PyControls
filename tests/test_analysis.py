@@ -21,13 +21,12 @@ class TestAnalysis(unittest.TestCase):
     def test_margins_unstable(self):
         """
         G(s) = 1/(s-1). Unstable pole.
-        This tests that the analysis module robustly handles systems
-        that don't have standard crossings.
+        This tests that the analysis module robustly handles systems that don't have standard crossings.
         """
         tf = TransferFunction([1], [1, -1])
         try:
             get_stability_margins(tf)
-        except Exception as e:
+        except Exception:
             pass
 
     def test_margins_infinite(self):

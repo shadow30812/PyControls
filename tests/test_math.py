@@ -1,4 +1,3 @@
-import math
 import unittest
 
 import numpy as np
@@ -156,7 +155,7 @@ class TestMathUtils(unittest.TestCase):
     def test_root_newton_maxiter_exception(self):
         """Ensure it raises ConvergenceError if maxiter reached."""
         r = Root()
-        f = lambda x: x**2 + 1  # No root
+        f = lambda x: x**2 + 1
         with self.assertRaises(ConvergenceError):
             r.newton_root(f, 0.0, maxiter=10)
 

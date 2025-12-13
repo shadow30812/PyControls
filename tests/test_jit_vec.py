@@ -15,21 +15,19 @@ class TestJITAndVectorization(unittest.TestCase):
     def test_manual_matrix_mul_correctness(self):
         """
         Verify the custom JIT matrix multiplication against NumPy's dot product.
-        This is critical since we replaced @ with _mat_mul for Numba compatibility.
+        This is critical since @ has been replaced by _mat_mul for Numba compatibility.
         """
         np.random.seed(123)
         A = np.random.rand(5, 5)
         B = np.random.rand(5, 5)
 
         expected = A @ B
-        # First call triggers compilation
         result = _mat_mul(A, B)
 
         np.testing.assert_array_almost_equal(result, expected, decimal=12)
 
     def test_manual_matrix_mul_nonsquare(self):
         """Verify _mat_mul handles non-square matrices correctly."""
-        # A is 2x3, B is 3x2. Result should be 2x2.
         A = np.zeros((2, 3))
         A[0, 0] = 1.0
         A[1, 1] = 1.0
@@ -54,12 +52,9 @@ class TestJITAndVectorization(unittest.TestCase):
         expB = manual_matrix_exp(B)
         expAB = manual_matrix_exp(A + B)
 
-        # Commuting matrices property
-        # Use _mat_mul to stay consistent with internal logic
         prod = _mat_mul(expA, expB)
         np.testing.assert_array_almost_equal(prod, expAB)
 
-        # Determinant property
         det_expA = np.linalg.det(expA)
         exp_traceA = np.exp(np.trace(A))
         self.assertAlmostEqual(det_expA, exp_traceA)
@@ -69,21 +64,15 @@ class TestJITAndVectorization(unittest.TestCase):
         Verify that the vectorized EKF Jacobian computation returns
         the correct shape and values for a larger state vector.
         """
-        # 10-state vector
         x0 = np.arange(10, dtype=float)
 
         def f_vec(x, u=None):
-            # Simple linear mapping f(x) = 2*x
-            # Supports broadcasting (n, m) -> (n, m)
             return 2.0 * x
 
         h = lambda x: x
 
-        # Dummy Q and R
         ekf = ExtendedKalmanFilter(f_vec, h, np.eye(10), np.eye(10), x0)
 
-        # Jacobian of f(x)=2x should be 2*I (diagonal matrix with 2s)
-        # compute_jacobian should use the vectorized path here
         J = ekf.compute_jacobian(f_vec, x0)
 
         expected_J = np.eye(10) * 2.0
