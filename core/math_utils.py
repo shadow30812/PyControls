@@ -5,6 +5,8 @@ from typing import Callable, Optional
 
 import numpy as np
 
+from core.exceptions import ConvergenceError
+
 TOL = 1e-12
 hc = 1e-12
 hf = 1e-6
@@ -12,10 +14,7 @@ ITER_MAX = 100
 
 
 def implicit_mul(expr: str) -> str:
-    """
-    Inserts explicit multiplication signs for implicit multiplication.
-    Example: '3x' -> '3*x', 'sin(x)2' -> 'sin(x)*2'.
-    """
+    """Inserts explicit multiplication signs for implicit multiplication."""
     expr = re.sub(r"(?<=[0-9\)])\s*(?=[A-Za-z\(])", "*", expr)
     expr = re.sub(r"(?<=[A-Za-z\)])\s*(?=[0-9])", "*", expr)
     return expr
@@ -29,15 +28,7 @@ def preprocess_power(expr: str) -> str:
 def make_func(
     expr_string: str, var_name: str = "t"
 ) -> Callable[[float | complex], float | complex]:
-    """
-    Compiles a string expression into a callable Python function.
-    The resulting function supports both float and complex arguments,
-    enabling Complex Step Differentiation.
-
-    Args:
-        expr_string: Mathematical expression (e.g., "sin(t) + t^2").
-        var_name: The independent variable name.
-    """
+    """Compiles a string expression into a callable Python function."""
     expr = preprocess_power(implicit_mul(expr_string))
     safe_locals = {}
     safe_locals.update(
@@ -58,13 +49,7 @@ def make_func(
 
 
 def make_system_func(expr_string: str) -> Callable[[np.ndarray, float], np.ndarray]:
-    """
-    Compiles a string expression into a state-space function f(t, x, u).
-    Supports NumPy vector operations.
-
-    Args:
-        expr_string: Expression returning the derivative vector (e.g. "[x[1], -x[0]]").
-    """
+    """Compiles a string expression into a state-space function f(t, x, u)."""
     expr = preprocess_power(implicit_mul(expr_string))
     safe_locals = {"pi": np.pi, "e": np.e}
     for name in dir(np):
@@ -88,12 +73,6 @@ def make_system_func(expr_string: str) -> Callable[[np.ndarray, float], np.ndarr
 
 
 class Differentiation:
-    """
-    Helper class for computing derivatives numerically.
-    Prioritizes Complex Step Differentiation for high accuracy,
-    falling back to Finite Difference if the function doesn't support complex types.
-    """
-
     def real_diff(self, func: Callable[..., float], point: float) -> float:
         try:
             arg = complex(point, hc)
@@ -111,10 +90,6 @@ class Differentiation:
 
 
 class Root:
-    """
-    Collection of robust root-finding algorithms.
-    """
-
     def brent_root(
         self,
         f: Callable[[float], float],
@@ -124,11 +99,6 @@ class Root:
         f_tol: float = 1e-12,
         maxiter: int = 100,
     ) -> float:
-        """
-        Finds a root of f(x) = 0 in the interval [a, b] using Brent's Method.
-        Combines Bisection, Secant, and Inverse Quadratic Interpolation.
-        Requires f(a) and f(b) to have opposite signs.
-        """
         fa = f(a)
         fb = f(b)
 
@@ -159,6 +129,7 @@ class Root:
             if abs(b - a) <= tol or abs(fb) <= f_tol:
                 return b
 
+            # Inverse quadratic interpolation
             s = None
             try:
                 if fa != fc and fb != fc:
@@ -209,7 +180,9 @@ class Root:
                 a, b = b, a
                 fa, fb = fb, fa
 
-        return b
+        raise ConvergenceError(
+            f"Brent's method failed to converge after {maxiter} iterations"
+        )
 
     def newton_root(
         self,
@@ -218,11 +191,6 @@ class Root:
         tol: float = 1e-12,
         maxiter: int = 100,
     ) -> float:
-        """
-        Finds a root using the Newton-Raphson method.
-        Calculates derivatives automatically using the Differentiation helper.
-        Useful when the root is not bracketed (e.g. roots of parabolas touching zero).
-        """
         x = guess
         diff_tool = Differentiation()
 
@@ -244,7 +212,9 @@ class Root:
                 return x_new
             x = x_new
 
-        return x
+        raise ConvergenceError(
+            f"Newton's method failed to converge after {maxiter} iterations"
+        )
 
     def find_root(
         self,
@@ -253,17 +223,14 @@ class Root:
         x1: Optional[float] = None,
         tol: float = 1e-12,
     ) -> float:
-        """
-        Hybrid Root Finder.
-
-        Strategy:
-        1. If two points [x0, x1] are provided, try Brent's method (bracketed).
-        2. If Brent's fails (bad bracket) or only one point provided, fall back to Newton-Raphson.
-        """
         if x1 is not None:
             try:
                 return self.brent_root(func, x0, x1, tol=tol, f_tol=tol)
-            except ValueError:
+            except (ValueError, ConvergenceError):
                 pass
 
-        return self.newton_root(func, x0, tol=tol)
+        try:
+            return self.newton_root(func, x0, tol=tol)
+        except ConvergenceError:
+            # Last ditch effort: return best guess or raise
+            return x0

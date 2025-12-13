@@ -127,25 +127,33 @@ class DCMotor:
         Returns the system dynamics function f(x, u) for parameter estimation.
         Designed for the Extended Kalman Filter (EKF).
 
+        Supports VECTORIZATION: x can be (4, 1) or (4, N).
         State Vector: [Speed, Current, log(J), log(b)]
         """
         _, _, K, R, L = self.params.values()
 
         def motor_dynamics_4_state(x, u):
-            omega = x[0, 0]
-            i = x[1, 0]
-            J_est = np.exp(x[2, 0])
-            b_est = np.exp(x[3, 0])
+            omega = x[0]
+            i = x[1]
+            J_est = np.exp(x[2])
+            b_est = np.exp(x[3])
 
-            voltage = u[0, 0]
+            if hasattr(u, "ndim") and u.ndim == 2:
+                voltage = u[0, 0]
+            elif hasattr(u, "__len__"):
+                voltage = u[0]
+            else:
+                voltage = u
 
             dw_dt = (K * i - b_est * omega) / J_est
-
             di_dt = (voltage - R * i - K * omega) / L
 
-            dJ_dt = 0.0
-            db_dt = 0.0
+            dJ_dt = np.zeros_like(omega)
+            db_dt = np.zeros_like(omega)
 
-            return np.array([[dw_dt], [di_dt], [dJ_dt], [db_dt]])
+            result = np.array([dw_dt, di_dt, dJ_dt, db_dt])
+            if result.ndim == 1:
+                return result.reshape(-1, 1)
+            return result
 
         return motor_dynamics_4_state

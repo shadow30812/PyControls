@@ -14,6 +14,7 @@ from core.ekf import ExtendedKalmanFilter
 from core.estimator import KalmanFilter
 from core.math_utils import make_system_func
 from core.solver import ExactSolver, NonlinearSolver
+from exit import flush, kill, stop
 
 
 def load_available_systems():
@@ -331,6 +332,7 @@ class PyControlsApp:
         ax_current.set_title("Current Response")
         ax_current.set_ylabel("Current (A)")
         ax_current.grid(True, alpha=0.3)
+        ax_current.legend(fontsize=8)
 
         ax_dist.set_title("Kalman Disturbance Estimation")
         ax_dist.set_ylabel("Est. Torque (Nm)")
@@ -501,13 +503,20 @@ class PyControlsApp:
 
 if __name__ == "__main__":
     app = PyControlsApp()
+    KILLED = False
     try:
         app.main_menu()
     except KeyboardInterrupt:
         print("\n\nExiting...")
-        time.sleep(2)
+        time.sleep(0.5)
     except EOFError:
         print("\n\nClosing the terminal...")
-        time.sleep(1)
+        time.sleep(0.2)
+        KILLED = True
     finally:
-        app.clear_screen()
+        flush()
+        if KILLED:
+            kill()
+        else:
+            app.clear_screen()
+            stop()

@@ -1,15 +1,61 @@
 import numpy as np
 
+try:
+    from numba import jit
 
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
+
+    # Dummy decorator if numba is missing
+    def jit(*args, **kwargs):
+        
+        def decorator(func):
+            return func
+
+        return decorator
+
+
+@jit(nopython=True, cache=True)
+def _mat_mul(A, B):
+    """
+    Manual matrix multiplication to avoid Numba requiring SciPy/BLAS.
+    Performs C = A @ B.
+    """
+    rows_A = A.shape[0]
+    cols_A = A.shape[1]
+    cols_B = B.shape[1]
+    C = np.zeros((rows_A, cols_B), dtype=np.float64)
+
+    for i in range(rows_A):
+        for j in range(cols_B):
+            acc = 0.0
+            for k in range(cols_A):
+                acc += A[i, k] * B[k, j]
+            C[i, j] = acc
+    return C
+
+
+@jit(nopython=True, cache=True)
 def manual_matrix_exp(A, order=20):
     """
     Computes the matrix exponential e^A using Scaling and Squaring with Taylor Series.
     Formula: e^A = (e^(A/2^s))^(2^s)
 
-    This implementation does not rely on scipy.linalg.expm, keeping the library
-    dependency-free for core math.
+    Optimized with Numba JIT compilation. Uses manual matrix multiplication
+    to maintain independence from scipy/blas.
     """
-    norm_A = np.max(np.sum(np.abs(A), axis=1))
+    # 1. Scaling
+    # Use infinity norm approximation (max row sum)
+    norm_A = 0.0
+    rows, cols = A.shape
+    for i in range(rows):
+        row_sum = 0.0
+        for j in range(cols):
+            row_sum += np.abs(A[i, j])
+        if row_sum > norm_A:
+            norm_A = row_sum
+
     s = 0
     while norm_A > 0.5:
         norm_A /= 2.0
@@ -17,15 +63,20 @@ def manual_matrix_exp(A, order=20):
 
     A_scaled = A / (2**s)
 
-    E = np.eye(A.shape[0])
-    term = np.eye(A.shape[0])
+    # 2. Taylor Series Approximation
+    E = np.eye(rows)
+    term = np.eye(rows)
 
     for k in range(1, order + 1):
-        term = term @ A_scaled / k
+        # term = term @ A_scaled / k
+        term = _mat_mul(term, A_scaled)
+        term = term / k
         E = E + term
 
+    # 3. Squaring
     for _ in range(s):
-        E = E @ E
+        # E = E @ E
+        E = _mat_mul(E, E)
 
     return E
 
@@ -37,15 +88,6 @@ class ExactSolver:
     """
 
     def __init__(self, A, B, C, D, dt):
-        """
-        Computes the discrete transition matrices (Phi and Gamma) upon initialization.
-
-        Continuous: dx/dt = Ax + Bu
-        Discrete:   x[k+1] = Phi * x[k] + Gamma * u[k]
-
-        Phi = e^(A*dt)
-        Gamma = Integral(e^(A*tau) * B) from 0 to dt
-        """
         self.A = np.atleast_2d(A)
         self.B = np.atleast_2d(B)
         self.C = np.atleast_2d(C)
@@ -56,10 +98,12 @@ class ExactSolver:
         n_states = self.A.shape[0]
         n_inputs = self.B.shape[1]
 
+        # Van Loan's Method construction
         top = np.hstack((self.A, self.B))
         bottom = np.zeros((n_inputs, n_states + n_inputs))
         M = np.vstack((top, bottom))
 
+        # This is now JIT-compiled and fast
         M_exp = manual_matrix_exp(M * dt)
 
         self.Phi = M_exp[:n_states, :n_states]
@@ -83,15 +127,13 @@ class ExactSolver:
         return y.flatten()
 
     def reset(self):
-        """Resets the internal state to zero."""
         self.x = np.zeros_like(self.x)
 
 
 class NonlinearSolver:
     """
     Adaptive Step-Size Solver for Non-Linear Systems.
-    Implements the Dormand-Prince (RK5(4)) method, often known as RK45.
-    Adjusts the integration step size (dt) automatically based on the local error estimate.
+    Implements the Dormand-Prince (RK5(4)) method.
     """
 
     def __init__(self, dynamics_func, dt_min=1e-5, dt_max=0.5, tol=1e-6):
@@ -100,16 +142,31 @@ class NonlinearSolver:
         self.dt_max = dt_max
         self.tol = tol
 
+        # Butcher Tableau for Dormand-Prince 5(4)
         self.c = np.array([0, 1 / 5, 3 / 10, 4 / 5, 8 / 9, 1, 1])
-        self.a = [
-            [],
-            [1 / 5],
-            [3 / 40, 9 / 40],
-            [44 / 45, -56 / 15, 32 / 9],
-            [19372 / 6561, -25360 / 2187, 64448 / 6561, -212 / 729],
-            [9017 / 3168, -355 / 33, 46732 / 5247, 49 / 176, -5103 / 18656],
-            [35 / 384, 0, 500 / 1113, 125 / 192, -2187 / 6784, 11 / 84],
+
+        # Vectorized 'a' matrix (7x7) for fast matrix multiplication
+        self.A_tableau = np.zeros((7, 7))
+        self.A_tableau[1, 0] = 1 / 5
+        self.A_tableau[2, :2] = [3 / 40, 9 / 40]
+        self.A_tableau[3, :3] = [44 / 45, -56 / 15, 32 / 9]
+        self.A_tableau[4, :4] = [19372 / 6561, -25360 / 2187, 64448 / 6561, -212 / 729]
+        self.A_tableau[5, :5] = [
+            9017 / 3168,
+            -355 / 33,
+            46732 / 5247,
+            49 / 176,
+            -5103 / 18656,
         ]
+        self.A_tableau[6, :6] = [
+            35 / 384,
+            0,
+            500 / 1113,
+            125 / 192,
+            -2187 / 6784,
+            11 / 84,
+        ]
+
         self.b = np.array(
             [35 / 384, 0, 500 / 1113, 125 / 192, -2187 / 6784, 11 / 84, 0]
         )
@@ -127,15 +184,7 @@ class NonlinearSolver:
 
     def solve_adaptive(self, t_end, x0, u_func=None):
         """
-        Solves the IVP from t=0 to t_end.
-
-        Args:
-            t_end: Final simulation time.
-            x0: Initial state vector.
-            u_func: Optional function u(t) for time-varying inputs.
-
-        Returns:
-            tuple: (time_array, state_history_array)
+        Solves the IVP from t=0 to t_end using vectorized operations.
         """
         t = 0.0
         x = x0.astype(float)
@@ -144,24 +193,27 @@ class NonlinearSolver:
         t_hist = [t]
         x_hist = [x]
 
+        # Pre-allocate K matrix for intermediate slopes: shape (7, n_states)
+        k = np.zeros((7, x.shape[0]))
+
         while t < t_end:
             if t + dt > t_end:
                 dt = t_end - t
 
-            k = np.zeros((7, x.shape[0]))
             u_val = u_func(t) if u_func else 0.0
 
+            # Stage 1
             k[0] = self.f(t, x, u_val).flatten()
 
+            # Stages 2-7 (Vectorized Inner Loop)
+            # Python loop here is fine as dot product is the heavy lifter
             for i in range(1, 7):
-                dx_sum = np.zeros_like(x)
-                for j in range(i):
-                    dx_sum += self.a[i][j] * k[j]
-
+                dx_sum = self.A_tableau[i, :i] @ k[:i]
                 t_inner = t + self.c[i] * dt
                 u_inner = u_func(t_inner) if u_func else 0.0
                 k[i] = self.f(t_inner, x + dt * dx_sum, u_inner).flatten()
 
+            # Final updates (Vectorized)
             x_5 = x + dt * (self.b @ k)
             x_4 = x + dt * (self.b_hat @ k)
 
