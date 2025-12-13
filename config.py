@@ -67,23 +67,23 @@ UKF_PARAMS = {
     "dt": 0.01,
     "t_end": 10.0,
     "noise_std": 0.1,
-    "Q": [0.01, 0.01],  # Process noise
-    "R": [0.1],  # Measurement noise
+    "Q": [0.01, 0.01],
+    "R": [0.1],
     "alpha": 1e-3,
     "beta": 2.0,
     "kappa": 0.0,
 }
 
 MPC_PARAMS = {
-    "dt": 0.05,  # Larger dt for prediction horizon
+    "dt": 0.05,
     "t_end": 10.0,
-    "horizon": 20,  # Look 20 steps ahead (1.0 sec)
-    "Q_weight": [10.0, 0.0],  # Penalty on [Speed Error, Current Error]
-    "R_weight": [0.1],  # Penalty on Control Effort
+    "horizon": 20,
+    "Q_weight": [10.0, 0.0],
+    "R_weight": [0.1],
     "u_min": -12.0,
     "u_max": 12.0,
     "learning_rate": 0.5,
-    "iterations": 20,  # Optimization iterations per step
+    "iterations": 20,
 }
 
 """
@@ -234,6 +234,9 @@ Input Signal:
 --------------------------------------------------------------------------------
 - alpha, beta, kappa: Parameters determining the spread of sigma points.
   Standard values: alpha=1e-3, beta=2 (Gaussian), kappa=0.
+
+- Q: Process Noise
+- R: Sensor Noise
 
 --------------------------------------------------------------------------------
 9. MPC_PARAMS (Model Predictive Control)

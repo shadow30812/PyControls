@@ -7,9 +7,7 @@ try:
 except ImportError:
     NUMBA_AVAILABLE = False
 
-    # Dummy decorator if numba is missing
     def jit(*args, **kwargs):
-        
         def decorator(func):
             return func
 
@@ -45,8 +43,6 @@ def manual_matrix_exp(A, order=20):
     Optimized with Numba JIT compilation. Uses manual matrix multiplication
     to maintain independence from scipy/blas.
     """
-    # 1. Scaling
-    # Use infinity norm approximation (max row sum)
     norm_A = 0.0
     rows, cols = A.shape
     for i in range(rows):
@@ -63,19 +59,15 @@ def manual_matrix_exp(A, order=20):
 
     A_scaled = A / (2**s)
 
-    # 2. Taylor Series Approximation
     E = np.eye(rows)
     term = np.eye(rows)
 
     for k in range(1, order + 1):
-        # term = term @ A_scaled / k
         term = _mat_mul(term, A_scaled)
         term = term / k
         E = E + term
 
-    # 3. Squaring
     for _ in range(s):
-        # E = E @ E
         E = _mat_mul(E, E)
 
     return E
@@ -98,12 +90,10 @@ class ExactSolver:
         n_states = self.A.shape[0]
         n_inputs = self.B.shape[1]
 
-        # Van Loan's Method construction
         top = np.hstack((self.A, self.B))
         bottom = np.zeros((n_inputs, n_states + n_inputs))
         M = np.vstack((top, bottom))
 
-        # This is now JIT-compiled and fast
         M_exp = manual_matrix_exp(M * dt)
 
         self.Phi = M_exp[:n_states, :n_states]
@@ -142,10 +132,8 @@ class NonlinearSolver:
         self.dt_max = dt_max
         self.tol = tol
 
-        # Butcher Tableau for Dormand-Prince 5(4)
         self.c = np.array([0, 1 / 5, 3 / 10, 4 / 5, 8 / 9, 1, 1])
 
-        # Vectorized 'a' matrix (7x7) for fast matrix multiplication
         self.A_tableau = np.zeros((7, 7))
         self.A_tableau[1, 0] = 1 / 5
         self.A_tableau[2, :2] = [3 / 40, 9 / 40]
@@ -193,7 +181,6 @@ class NonlinearSolver:
         t_hist = [t]
         x_hist = [x]
 
-        # Pre-allocate K matrix for intermediate slopes: shape (7, n_states)
         k = np.zeros((7, x.shape[0]))
 
         while t < t_end:
@@ -202,18 +189,14 @@ class NonlinearSolver:
 
             u_val = u_func(t) if u_func else 0.0
 
-            # Stage 1
             k[0] = self.f(t, x, u_val).flatten()
 
-            # Stages 2-7 (Vectorized Inner Loop)
-            # Python loop here is fine as dot product is the heavy lifter
             for i in range(1, 7):
                 dx_sum = self.A_tableau[i, :i] @ k[:i]
                 t_inner = t + self.c[i] * dt
                 u_inner = u_func(t_inner) if u_func else 0.0
                 k[i] = self.f(t_inner, x + dt * dx_sum, u_inner).flatten()
 
-            # Final updates (Vectorized)
             x_5 = x + dt * (self.b @ k)
             x_4 = x + dt * (self.b_hat @ k)
 

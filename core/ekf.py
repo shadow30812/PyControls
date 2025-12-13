@@ -87,49 +87,32 @@ class ExtendedKalmanFilter:
         """
         Performs the Time Update (Prediction) step.
         """
-        # 1. Non-linear state propagation
-        # We use the real part for the state update
         x_dot = self.f(self.x_hat.astype(complex), u).real
         self.x_pred = self.x_hat + x_dot * dt
 
-        # 2. Linearization (Jacobian F)
-        # F = I + A_c * dt
         A_c = self.compute_jacobian(self.f, self.x_hat, u)
         F = np.eye(self.n) + A_c * dt
 
-        # 3. Covariance Propagation
-        # P = F P F.T + Q
         self.P = F @ self.P @ F.T + self.Q
 
     def update(self, y_meas):
         """
         Performs the Measurement Update (Correction) step.
         """
-        # 1. Linearize measurement function (Jacobian H)
         H = self.compute_jacobian(lambda x: self.h(x), self.x_hat, u=None)
 
-        # 2. Innovation
         y_pred = self.h(self.x_hat).real
         y_err = y_meas - y_pred
 
-        # 3. Kalman Gain
         S = H @ self.P @ H.T + self.R
 
-        # Use solve instead of inv for numerical stability: K = P @ H.T @ inv(S)
-        # K = (solve(S.T, (P @ H.T).T)).T  ... simpler:
-        # K = P H^T S^-1
         try:
             K = self.P @ H.T @ np.linalg.inv(S)
         except np.linalg.LinAlgError:
-            # Fallback if S is singular (rare with proper R)
             K = np.zeros((self.n, y_meas.shape[0]))
 
-        # 4. State Update
         self.x_hat = self.x_pred + K @ y_err
 
-        # 5. Covariance Update
-        # Joseph Form for stability: P = (I - KH)P(I - KH)^T + KRK^T
-        # But standard form is faster: P = (I - KH)P
         I = np.eye(self.n)
         self.P = (I - K @ H) @ self.P
 
