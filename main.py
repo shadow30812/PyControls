@@ -581,22 +581,28 @@ class PyControlsApp:
         cfg = config.MPC_PARAMS
         dt = cfg["dt"]
 
+        A_lin = np.array([[0.9]])
+        B_lin = np.array([[dt]])
+
         def simple_model(x, u, dt):
             return 0.9 * x + u * dt
 
         x0 = np.array([0.0])
+
         Q = np.diag([cfg["Q_weight"][0]])
         R = np.diag(cfg["R_weight"])
 
         mpc = ModelPredictiveControl(
-            simple_model,
-            x0,
+            model_func=simple_model,
+            x0=x0,
             horizon=cfg["horizon"],
             dt=dt,
             Q=Q,
             R=R,
             u_min=cfg["u_min"],
             u_max=cfg["u_max"],
+            A=A_lin,
+            B=B_lin,
         )
 
         ref = np.array([10.0])
@@ -607,14 +613,10 @@ class PyControlsApp:
 
         curr_x = x0
 
-        print("Optimizing Control Trajectories...")
+        print(f"Optimizing Control Trajectories using {mpc.mode.upper()} solver...")
+
         for t in t_vals:
-            u_opt = mpc.optimize(
-                curr_x,
-                ref,
-                learning_rate=cfg["learning_rate"],
-                iterations=cfg["iterations"],
-            )
+            u_opt = mpc.optimize(curr_x, ref, iterations=cfg["iterations"])
 
             curr_x = simple_model(curr_x, u_opt, dt)
 
@@ -626,9 +628,9 @@ class PyControlsApp:
         plt.subplot(2, 1, 1)
         plt.plot(t_vals, x_hist, "b-", label="System Output")
         plt.axhline(ref[0], color="k", linestyle="--", label="Setpoint")
-        plt.title("MPC Tracking Performance")
+        plt.title(f"MPC Tracking Performance ({mpc.mode.upper()} Solver)")
         plt.legend()
-        plt.grid()
+        plt.grid(True, alpha=0.3)
 
         plt.subplot(2, 1, 2)
         plt.step(t_vals, u_hist, "r-", label="Control Input (u)")
@@ -636,7 +638,7 @@ class PyControlsApp:
         plt.axhline(cfg["u_min"], color="k", linestyle=":")
         plt.title("Control Effort (Constrained)")
         plt.legend()
-        plt.grid()
+        plt.grid(True, alpha=0.3)
 
         plt.tight_layout()
         plt.show()

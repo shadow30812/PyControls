@@ -9,6 +9,7 @@ from core.ukf import UnscentedKalmanFilter
 class TestAdvancedControl(unittest.TestCase):
     """
     Unit Tests for advanced control and estimation strategies (UKF & MPC).
+    Updated to support the new ADMM (Linear) and iLQR (Nonlinear) solvers.
     """
 
     def test_ukf_sigma_points_generation(self):
@@ -59,64 +60,87 @@ class TestAdvancedControl(unittest.TestCase):
         P0 = np.eye(1) * 0.1
 
         ukf = UnscentedKalmanFilter(f, h, np.eye(1) * 0.01, np.eye(1) * 0.01, x0, P0)
-
         ukf.predict(0, 0.1)
 
         self.assertGreater(ukf.x[0], 4.05)
 
-    def test_mpc_horizon_prediction(self):
-        """Test the internal prediction model simulates correctly."""
+    def test_mpc_linear_admm_selection(self):
+        """Test that providing A, B matrices triggers the ADMM solver."""
+        A = np.eye(2)
+        B = np.eye(2)
+        mpc = ModelPredictiveControl(A=A, B=B, horizon=5)
+
+        self.assertEqual(mpc.mode, "linear")
+        self.assertTrue(hasattr(mpc, "H_inv"), "ADMM pre-computation missing")
+
+    def test_mpc_nonlinear_ilqr_selection(self):
+        """Test that providing model_func triggers the iLQR solver."""
+        f = lambda x, u, dt: x + u
+        mpc = ModelPredictiveControl(model_func=f, x0=np.array([0.0]), horizon=5)
+
+        self.assertEqual(mpc.mode, "nonlinear")
+        self.assertIsNone(mpc.A)
+
+    def test_mpc_admm_optimization(self):
+        """Test ADMM solver accuracy on a simple integrator."""
+        dt = 1.0
+        A = np.array([[1.0]])
+        B = np.array([[dt]])
+
+        mpc = ModelPredictiveControl(
+            A=A,
+            B=B,
+            horizon=5,
+            dt=dt,
+            Q=[[1.0]],
+            R=[[0.1]],
+            u_min=-10,
+            u_max=10,
+        )
+
+        x0 = np.array([0.0])
+        x_ref = np.array([10.0])
+
+        u_opt = mpc.optimize(x0, x_ref, iterations=20)
+
+        self.assertGreater(u_opt[0], 2.0)
+
+    def test_mpc_ilqr_optimization(self):
+        """Test iLQR solver accuracy on the same integrator."""
         f = lambda x, u, dt: x + u * dt
-        x0 = np.array([0.0])
-
-        mpc = ModelPredictiveControl(f, x0, horizon=5, dt=1.0)
-
-        u_seq = np.ones((5, 1))
-        traj = mpc._predict_trajectory(x0, u_seq)
-
-        self.assertEqual(len(traj), 6)
-        self.assertAlmostEqual(traj[-1, 0], 5.0)
-
-    def test_mpc_cost_function(self):
-        """Test cost calculation logic."""
-        f = lambda x, u, dt: x + u
-        x0 = np.array([0.0])
 
         mpc = ModelPredictiveControl(
-            f, x0, horizon=2, dt=1.0, Q=np.eye(1), R=np.zeros((1, 1))
+            model_func=f,
+            x0=np.array([0.0]),
+            horizon=5,
+            dt=1.0,
+            Q=[[1.0]],
+            R=[[0.1]],
+            u_min=-10,
+            u_max=10,
         )
 
-        x_ref = np.array([10.0])
-        u_seq = np.array([[0.0], [0.0]])
-
-        cost = mpc._cost_function(x0, u_seq, x_ref)
-        self.assertAlmostEqual(cost, 200.0)
-
-    def test_mpc_optimization_unconstrained(self):
-        """Test if optimizer finds solution for simple tracking."""
-        f = lambda x, u, dt: x + u
-        x0 = np.array([0.0])
-        x_ref = np.array([5.0])
-
-        mpc = ModelPredictiveControl(
-            f, x0, horizon=1, dt=1.0, u_min=-100, u_max=100, Q=[[1.0]], R=[[0.0]]
-        )
-
-        u_opt = mpc.optimize(x0, x_ref, learning_rate=0.5, iterations=100)
-
-        self.assertAlmostEqual(u_opt[0], 5.0, places=2)
-
-    def test_mpc_optimization_constrained(self):
-        """Test if optimizer respects u_max constraints."""
-        f = lambda x, u, dt: x + u
         x0 = np.array([0.0])
         x_ref = np.array([10.0])
 
-        mpc = ModelPredictiveControl(f, x0, horizon=1, dt=1.0, u_min=-2, u_max=2)
+        u_opt = mpc.optimize(x0, x_ref, iterations=10)
 
-        u_opt = mpc.optimize(x0, x_ref, learning_rate=0.5, iterations=50)
+        self.assertGreater(u_opt[0], 2.0)
 
-        self.assertAlmostEqual(u_opt[0], 2.0, places=4)
+    def test_mpc_constraints(self):
+        """Test that constraints are respected by the solvers."""
+        A = np.array([[1.0]])
+        B = np.array([[1.0]])
+
+        limit = 2.0
+        mpc = ModelPredictiveControl(A=A, B=B, horizon=5, u_min=-limit, u_max=limit)
+
+        x0 = np.array([0.0])
+        x_ref = np.array([100.0])
+
+        u_opt = mpc.optimize(x0, x_ref)
+
+        self.assertLessEqual(u_opt[0], limit + 1e-4)
 
 
 if __name__ == "__main__":

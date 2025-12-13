@@ -80,6 +80,7 @@ The library is structured around core control theory principles including state-
 - NumPy 1.19.0 or later
 - Matplotlib 3.2.0 or later
 - Numba 0.59.0 or later (optional, for performance optimization)
+- SciPy (optional, for testing accuracy)
 
 ### Standard Installation
 
