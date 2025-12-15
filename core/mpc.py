@@ -1,5 +1,7 @@
 import numpy as np
 
+from config import MPC_SOLVER_PARAMS
+
 
 class ModelPredictiveControl:
     """
@@ -98,7 +100,7 @@ class ModelPredictiveControl:
 
         self.H = self.S_u.T @ Q_bar @ self.S_u + R_bar
 
-        self.rho = 1.0
+        self.rho = MPC_SOLVER_PARAMS["rho"]
         self.H_inv = np.linalg.inv(self.H + self.rho * np.eye(self.H.shape[0]))
 
         self.Q_bar = Q_bar
@@ -135,7 +137,7 @@ class ModelPredictiveControl:
 
     def _get_derivatives(self, x, u):
         """Finite difference derivatives for iLQR (Robust for any user function)."""
-        eps = 1e-5
+        eps = MPC_SOLVER_PARAMS["finite_diff_eps"]
         nx = self.x_dim
         nu = self.u_dim
 
@@ -193,7 +195,7 @@ class ModelPredictiveControl:
                 Q_uu = l_uu + B_k.T @ V_xx @ B_k
                 Q_ux = A_k.T @ V_xx @ B_k
 
-                Q_uu_reg = Q_uu + np.eye(self.u_dim) * 1e-6
+                Q_uu_reg = Q_uu + np.eye(self.u_dim) * MPC_SOLVER_PARAMS["ilqr_reg"]
                 Q_uu_inv = np.linalg.inv(Q_uu_reg)
 
                 k = -Q_uu_inv @ Q_u
@@ -214,7 +216,7 @@ class ModelPredictiveControl:
 
             for i in range(self.N):
                 delta_x = curr - x_seq[i]
-                u_ctrl = u_seq[i] + k_gains[i] + K_gains[i] @ delta_
+                u_ctrl = u_seq[i] + k_gains[i] + K_gains[i] @ delta_x
                 u_ctrl = np.clip(u_ctrl, self.u_min, self.u_max)
 
                 u_new_seq[i] = u_ctrl
@@ -236,10 +238,16 @@ class ModelPredictiveControl:
         x_ref = np.array(x_ref, dtype=float)
 
         if self.mode == "linear":
-            iters = kwargs.get("iterations", 50)
+            iters = kwargs.get(
+                "iterations",
+                MPC_SOLVER_PARAMS["default_linear_iters"],
+            )
             self.u_seq = self._solve_admm(x_current, x_ref, iterations=iters)
         else:
-            iters = kwargs.get("iterations", 10)
+            iters = kwargs.get(
+                "iterations",
+                MPC_SOLVER_PARAMS["default_nonlinear_iters"],
+            )
             self.u_seq = self._solve_ilqr(x_current, x_ref, iterations=iters)
 
         u_optimal = self.u_seq[0]

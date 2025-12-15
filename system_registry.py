@@ -1,4 +1,5 @@
 from systems.dc_motor import DCMotor
+from systems.pendulum import InvertedPendulum
 
 
 class SystemDescriptor:
@@ -40,12 +41,12 @@ SYSTEM_REGISTRY = {
     "pendulum": SystemDescriptor(
         system_id="pendulum",
         display_name="Inverted Pendulum",
-        system_class=None,
-        input_type="force",
-        state_labels=["θ (rad)", "θ̇ (rad/s)"],
-        supports_analysis=False,
-        supports_estimation=False,
-        supports_mpc=False,
+        system_class=InvertedPendulum,
+        input_type="torque",
+        state_labels=["θ (rad)", "ω (rad/s)"],
+        supports_analysis=True,
+        supports_estimation=True,
+        supports_mpc=True,
         supports_interactive_lab=True,
     ),
 }

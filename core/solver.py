@@ -1,5 +1,7 @@
 import numpy as np
 
+from config import SOLVER_PARAMS
+
 try:
     from numba import jit
 
@@ -35,7 +37,7 @@ def _mat_mul(A, B):
 
 
 @jit(nopython=True, cache=True)
-def manual_matrix_exp(A, order=20):
+def manual_matrix_exp(A, order=SOLVER_PARAMS["matrix_exp_order"]):
     """
     Computes the matrix exponential e^A using Scaling and Squaring with Taylor Series.
     Formula: e^A = (e^(A/2^s))^(2^s)
@@ -126,7 +128,13 @@ class NonlinearSolver:
     Implements the Dormand-Prince (RK5(4)) method.
     """
 
-    def __init__(self, dynamics_func, dt_min=1e-5, dt_max=0.5, tol=1e-6):
+    def __init__(
+        self,
+        dynamics_func,
+        dt_min=SOLVER_PARAMS["adaptive_dt_min"],
+        dt_max=SOLVER_PARAMS["adaptive_dt_max"],
+        tol=SOLVER_PARAMS["adaptive_tol"],
+    ):
         self.f = dynamics_func
         self.dt_min = dt_min
         self.dt_max = dt_max
@@ -135,7 +143,7 @@ class NonlinearSolver:
         self.c = np.array([0, 1 / 5, 3 / 10, 4 / 5, 8 / 9, 1, 1])
 
         self.A_tableau = np.zeros((7, 7))
-        self.A_tableau[1, 0] = 1 / 5
+        self.A_tableau[1, :1] = 1 / 5
         self.A_tableau[2, :2] = [3 / 40, 9 / 40]
         self.A_tableau[3, :3] = [44 / 45, -56 / 15, 32 / 9]
         self.A_tableau[4, :4] = [19372 / 6561, -25360 / 2187, 64448 / 6561, -212 / 729]
@@ -176,7 +184,7 @@ class NonlinearSolver:
         """
         t = 0.0
         x = x0.astype(float)
-        dt = 0.001
+        dt = SOLVER_PARAMS["adaptive_initial_dt"]
 
         t_hist = [t]
         x_hist = [x]
@@ -211,7 +219,11 @@ class NonlinearSolver:
             if error == 0:
                 dt_new = dt * 2
             else:
-                dt_new = 0.9 * dt * (self.tol / error) ** 0.2
+                dt_new = (
+                    SOLVER_PARAMS["safety_factor_1"]
+                    * dt
+                    * (self.tol / error) ** SOLVER_PARAMS["safety_factor_2"]
+                )
 
             dt = max(self.dt_min, min(dt_new, self.dt_max))
 

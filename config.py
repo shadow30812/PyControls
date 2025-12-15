@@ -5,6 +5,8 @@ This module acts as the control center for the simulation suite. It contains
 all physical parameters, simulation settings, controller gains, and visualization
 preferences."""
 
+import numpy as np
+
 MOTOR_PARAMS = {"J": 0.02, "b": 0.2, "K": 0.1, "R": 2.0, "L": 0.5}
 
 PENDULUM_PARAMS = {
@@ -21,6 +23,7 @@ SIM_PARAMS = {
     "dt": 0.001,
     "t_end": 3.0,
     "step_volts": 1.0,
+    "step_angle": 0.0,
 }
 
 DISTURBANCE_PARAMS = {
@@ -32,7 +35,7 @@ DISTURBANCE_PARAMS = {
 CONTROLLERS = [
     {"name": "P (Weak)", "Kp": 50, "Ki": 0, "Kd": 0, "color": "#d62728"},
     {"name": "PI (Balanced)", "Kp": 40, "Ki": 50, "Kd": 0, "color": "#1f77b4"},
-    {"name": "PID (Aggressive)", "Kp": 60, "Ki": 40, "Kd": 5, "color": "#2ca02c"},
+    {"name": "PID (Aggressive)", "Kp": 60, "Ki": 40, "Kd": 10, "color": "#2ca02c"},
 ]
 
 PLOT_PARAMS = {
@@ -94,6 +97,117 @@ MPC_PARAMS = {
     "u_max": 12.0,
     "learning_rate": 0.5,
     "iterations": 20,
+}
+
+DC_MOTOR_DEFAULTS = {"J": 0.01, "b": 0.1, "K": 0.01, "R": 1, "L": 0.5}
+
+PENDULUM_LQR_PARAMS = {
+    "Q_diag": [5.0, 1.0, 10.0, 1.0],
+    "R_val": 0.1,
+}
+
+PRESET_SIM_PARAMS = {
+    "kf_Q_scale": 1e-4,
+    "kf_Q_dist_scale": 1e-2,
+    "kf_R_scale": 0.01,
+    "pid_output_limits": (-12, 12),
+    "pid_tau": 0.02,
+    "lqr_clip_min": -20,
+    "lqr_clip_max": 20,
+    "noise_std": 0.01,
+}
+
+INTERACTIVE_LAB_PARAMS = {
+    "omega_ref": 1.0,
+    "controller_min_dt": 0.001,
+    "ekf_x0": [0.0, 0.0, 0.05, 0.0],
+    "ekf_Q_diag": [1e-4, 1e-4, 1e-4, 1e-4],
+    "ekf_R_diag": [1e-3, 1e-3],
+}
+
+MPC_SOLVER_PARAMS = {
+    "rho": 1.0,
+    "finite_diff_eps": 1e-5,
+    "ilqr_reg": 1e-6,
+    "default_linear_iters": 50,
+    "default_nonlinear_iters": 10,
+}
+
+SOLVER_PARAMS = {
+    "matrix_exp_order": 20,
+    "adaptive_dt_min": 1e-5,
+    "adaptive_dt_max": 0.5,
+    "adaptive_tol": 1e-6,
+    "adaptive_initial_dt": 0.001,
+    "safety_factor_1": 0.9,
+    "safety_factor_2": 0.2,
+}
+
+PENDULUM_ESTIMATION_PARAMS = {
+    "dt": 0.01,
+    "t_end": 20.0,
+    "true_system_params": {"M": 1.0, "m": 0.1, "l": 0.5, "b": 0.05, "g": 9.81},
+    "initial_guess_m": 0.02,  # Start with 20% of true mass
+    "initial_guess_l": 0.2,  # Start with incorrect length
+    "p_init_scale": 0.1,
+    # State: [x, v, theta, omega, log(m), log(l)]
+    "Q_init": [1e-5, 1e-5, 1e-5, 1e-5, 1e-2, 1e-2],
+    "R": [0.001, 0.001],  # Measuring x and theta
+    "sensor_noise_std": 0.01,
+    "input_amplitude": 3.0,  # Force in Newtons
+    "input_period": 4.0,  # Slower period for mechanical system
+}
+
+UKF_PENDULUM_PARAMS = {
+    "dt": 0.01,
+    "t_end": 10.0,
+    "x0": [1.57, 0],  # Start at 90 degrees (horizontal)
+    "P0": 0.1,  # Initial uncertainty
+    "Q_diag": [0.001, 0.001],  # Process noise (Angle, Velocity)
+    "R_diag": [0.01],  # Measurement noise (Angle only)
+    "noise_std": 0.05,
+    "alpha": 1e-3,
+    "beta": 2.0,
+    "kappa": 0.0,
+}
+
+UKF_MOTOR_PARAMS = {
+    "dt": 0.001,
+    "t_end": 4.0,
+    "x0": [0.0, 0.0],  # [Speed, Current]
+    "P0": 0.1,
+    "Q_diag": [0.1, 0.1],  # Process noise
+    "R_diag": [0.05, 0.05],  # Measurement noise
+    "noise_std": 0.02,
+    "alpha": 1e-3,
+    "beta": 2.0,
+    "kappa": 0.0,
+    # Stiction Parameters
+    "coulomb_friction": 0.05,  # Static friction torque (Nm)
+    "viscous_friction": 0.1,  # Standard damping
+}
+
+MPC_MOTOR_PARAMS = {
+    "dt": 0.05,
+    "horizon": 20,
+    "Q_diag": [20.0, 0.0],  # Heavy penalty on Speed error, some on Current
+    "R_diag": [0.01],  # Small penalty on Voltage (Cheap control)
+    "u_min": -12.0,
+    "u_max": 12.0,
+    "target_speed": 2.5,  # rad/s
+    "iterations": 50,  # ADMM iterations
+}
+
+MPC_PENDULUM_PARAMS = {
+    "dt": 0.02,
+    "horizon": 100,  # Longer horizon needed to "see" the swing up
+    "Q_diag": [1.0, 0.1, 20.0, 0.1],  # Penalize [x, v, theta, omega]
+    # Note: Theta penalty is high to force upright position
+    "R_diag": [0.1],
+    "u_min": -20.0,
+    "u_max": 20.0,
+    "start_theta": np.pi,  # Hanging down
+    "iterations": 30,  # iLQR iterations
 }
 
 """

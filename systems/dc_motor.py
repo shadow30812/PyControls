@@ -1,5 +1,7 @@
 import numpy as np
 
+from config import DC_MOTOR_DEFAULTS, UKF_MOTOR_PARAMS
+from core.solver import manual_matrix_exp
 from core.state_space import StateSpace
 from core.transfer_function import TransferFunction
 
@@ -16,7 +18,14 @@ class DCMotor:
     - L: Armature Inductance
     """
 
-    def __init__(self, J=0.01, b=0.1, K=0.01, R=1, L=0.5):
+    def __init__(
+        self,
+        J=DC_MOTOR_DEFAULTS["J"],
+        b=DC_MOTOR_DEFAULTS["b"],
+        K=DC_MOTOR_DEFAULTS["K"],
+        R=DC_MOTOR_DEFAULTS["R"],
+        L=DC_MOTOR_DEFAULTS["L"],
+    ):
         self.params = {"J": J, "b": b, "K": K, "R": R, "L": L}
 
     def get_closed_loop_tf(self, Kp, Ki, Kd):
@@ -157,3 +166,88 @@ class DCMotor:
             return result
 
         return motor_dynamics_4_state
+
+    def get_nonlinear_dynamics(self):
+        """
+        Returns (f, h) for UKF with a "Stiction" (Stick-Slip) friction model.
+
+        State: [Speed (rad/s), Current (A)]
+        Measurement: [Speed, Current]
+        """
+        J = self.params["J"]
+        K = self.params["K"]
+        R = self.params["R"]
+        L = self.params["L"]
+
+        # Non-linear Friction parameters
+        T_coulomb = UKF_MOTOR_PARAMS["coulomb_friction"]
+        b_viscous = UKF_MOTOR_PARAMS["viscous_friction"]
+
+        def motor_stiction_dynamics(x, u, dt):
+            omega = x[0]
+            current = x[1]
+
+            # Input handling
+            if hasattr(u, "__len__"):
+                voltage = u[0]
+            else:
+                voltage = u
+
+            # --- Non-Linear Stiction Model ---
+            # Torque produced by motor
+            T_motor = K * current
+
+            # Friction Torque: Viscous + Coulomb (Sign(omega))
+            # We use a slight smoothing tanh to help stability, or raw sign
+            T_friction = b_viscous * omega + T_coulomb * np.sign(omega)
+
+            # Stiction Logic: If moving slowly and torque < static friction, we stop.
+            if abs(omega) < 0.1 and abs(T_motor) < T_coulomb:
+                domega = -omega / dt  # Kill speed instantly (in one step)
+            else:
+                domega = (T_motor - T_friction) / J
+
+            di = (voltage - R * current - K * omega) / L
+
+            # Euler Step
+            omega_next = omega + domega * dt
+            current_next = current + di * dt
+
+            return np.array([omega_next, current_next])
+
+        def measurement_model(x):
+            return x  # We measure both states
+
+        return motor_stiction_dynamics, measurement_model
+
+    def get_mpc_model(self, dt):
+        """
+        Returns Linear Discrete Matrices (A_d, B_d) for MPC.
+        Uses Exact Zero-Order Hold (ZOH) discretization to match physics.
+        """
+        # 1. Get Continuous Matrices
+        ss = self.get_state_space()
+        A = np.array(ss.A)
+        B = np.array(ss.B)
+
+        n_states = A.shape[0]
+        n_inputs = B.shape[1]
+
+        # 2. Exact Discretization (ZOH)
+        # Construct [A B; 0 0] matrix
+        M = np.zeros((n_states + n_inputs, n_states + n_inputs))
+        M[:n_states, :n_states] = A
+        M[:n_states, n_states:] = B
+
+        # Matrix Exponential
+        M_exp = manual_matrix_exp(M * dt)
+
+        # Extract discrete matrices
+        A_d = M_exp[:n_states, :n_states]
+        B_d = M_exp[:n_states, n_states:]
+
+        # DCMotor B is 2x2 [[0, -1/J], [1/L, 0]] (Voltage, Disturbance).
+        # MPC controls Input 0 (Voltage).
+        B_d_voltage = B_d[:, 0].reshape(-1, 1)
+
+        return A_d, B_d_voltage

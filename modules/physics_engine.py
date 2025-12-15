@@ -46,22 +46,49 @@ def pendulum_dynamics(t, x, u, params, disturbance=0.0):
         b : damping coefficient
         g : gravity
     """
-    theta, theta_dot = x
+    x_dot = x[1]
+    theta = x[2]
+    theta_dot = x[3]
 
-    M = params["M"]
-    m = params["m"]
-    l = params["l"]
-    b = params.get("b", 0.0)
+    M = params["M"]  # Cart Mass
+    m = params["m"]  # Pendulum Mass
+    l = params["l"]  # Pendulum Length
+    b = params.get("b", 0.0)  # Pendulum Friction
     g = params.get("g", 9.81)
 
-    theta_ddot = (
-        (g / l) * theta
-        + (1.0 / (M * l)) * u
-        - (b / (M * l * l)) * theta_dot
-        + disturbance
-    )
+    sin_t = np.sin(theta)
+    cos_t = np.cos(theta)
 
-    return np.array([theta_dot, theta_ddot])
+    denom = M + m * (1 - cos_t**2)
+
+    # --- FORCES ---
+    # 1. Gravity Torque term
+    term_grav = (M + m) * g * sin_t
+
+    # 2. Coriolis/Centripetal & Input term (Coupled via Cosine)
+    # Note: Friction is NOT in here.
+    term_coupled = -cos_t * (u + m * l * theta_dot**2 * sin_t)
+
+    # 3. Friction Term (Opposes angular velocity)
+    # Must be scaled by (M+m) to match the numerator scaling of the derived equation
+    # Eq: theta_ddot = [ (M+m)g sin - cos(u + ...) - (M+m)b*theta_dot/(ml) ] / (l * denom/M...?)
+    # Easier form: Generalized Force Q_theta = -b * theta_dot
+    # In the decoupled algebraic form used here:
+    term_fric = -(M + m) * b * theta_dot / (m * l)
+
+    # 4. Disturbance (Torque on hinge)
+    term_dist = disturbance * (M + m) / (m * l)
+
+    theta_ddot = (term_grav + term_coupled + term_fric + term_dist) / (l * denom)
+
+    # Cart Acceleration
+    term3 = u + m * l * theta_dot**2 * sin_t
+    term4 = -m * g * sin_t * cos_t
+    # Cart friction could be added: - b_cart * x_dot
+
+    x_ddot = (term3 + term4) / denom
+
+    return np.array([x_dot, x_ddot, theta_dot, theta_ddot])
 
 
 def rk4_fixed_step(dynamics_func, x, u, dt, params, disturbance=0.0):
