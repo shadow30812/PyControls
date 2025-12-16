@@ -129,7 +129,6 @@ class Root:
             if abs(b - a) <= tol or abs(fb) <= f_tol:
                 return b
 
-            # Inverse quadratic interpolation
             s = None
             try:
                 if fa != fc and fb != fc:
@@ -232,5 +231,4 @@ class Root:
         try:
             return self.newton_root(func, x0, tol=tol)
         except ConvergenceError:
-            # Last ditch effort: return best guess or raise
             return x0

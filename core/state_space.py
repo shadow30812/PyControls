@@ -6,15 +6,37 @@ from core.exceptions import DimensionMismatchError
 class StateSpace:
     """
     A container for MIMO Linear Time-Invariant (LTI) Systems.
-    Defined by the state-space equations:
-        dx/dt = Ax + Bu
-        y     = Cx + Du
+
+    This class encapsulates the state-space representation of a system defined by:
+        dx/dt = Ax + Bu  (State Equation)
+        y     = Cx + Du  (Output Equation)
+
+    It validates the dimensions of the provided matrices to ensure they form a
+    consistent system.
+
+    Attributes:
+        A (np.ndarray): State transition matrix (n_states x n_states).
+        B (np.ndarray): Input matrix (n_states x n_inputs).
+        C (np.ndarray): Output matrix (n_outputs x n_states).
+        D (np.ndarray): Feedthrough matrix (n_outputs x n_inputs).
+        n_states (int): Number of state variables.
+        n_inputs (int): Number of control inputs.
+        n_outputs (int): Number of measurement outputs.
     """
 
     def __init__(self, A, B, C, D):
         """
-        Validates dimensions and stores system matrices.
-        Raises DimensionMismatchError if shapes are invalid.
+        Initializes the StateSpace system and validates matrix dimensions.
+
+        Args:
+            A (array-like): The state matrix.
+            B (array-like): The input matrix.
+            C (array-like): The output matrix.
+            D (array-like): The direct transmission (feedthrough) matrix.
+
+        Raises:
+            DimensionMismatchError: If the matrix dimensions are inconsistent with
+            each other (e.g., if A is not square, or B/C/D do not match the state dimension).
         """
         self.A = np.array(A, dtype=float)
         self.B = np.array(B, dtype=float)
@@ -45,8 +67,28 @@ class StateSpace:
 
     def get_frequency_response(self, omega_range, input_idx=0, output_idx=0):
         """
-        Computes the frequency response H(jw) directly from state-space matrices.
-        Formula: H(s) = C * (sI - A)^-1 * B + D
+        Computes the frequency response H(jw) directly from state-space matrices
+        for a specific input-output pair over a range of frequencies.
+
+        The transfer function is calculated as:
+            H(s) = C * (sI - A)^-1 * B + D
+        where s = jw.
+
+        This method solves the linear system (sI - A)x = B directly rather than
+        explicitly inverting the matrix, which is numerically more stable.
+
+        Args:
+            omega_range (array-like): A list or array of frequency points (rad/s).
+            input_idx (int, optional): Index of the input channel. Defaults to 0.
+            output_idx (int, optional): Index of the output channel. Defaults to 0.
+
+        Returns:
+            tuple: A tuple (magnitudes, phases) where:
+                - magnitudes is a numpy array of magnitude values in dB.
+                - phases is a numpy array of phase values in degrees.
+
+        Raises:
+            ValueError: If input_idx or output_idx are out of bounds.
         """
         if not (0 <= input_idx < self.n_inputs):
             raise ValueError(f"Invalid input_idx {input_idx}")
@@ -65,14 +107,12 @@ class StateSpace:
         for w in omega_range:
             s = 1j * w
             try:
-                # Solve (sI - A)x = B for x, which is faster/safer than inv(sI - A)
                 term = np.linalg.solve(s * I - self.A, B_j)
                 resp_complex = (C_i @ term)[0, 0] + D_ij
 
                 mags.append(20 * np.log10(np.abs(resp_complex)))
                 phases.append(np.degrees(np.angle(resp_complex)))
             except np.linalg.LinAlgError:
-                # Handle singularities (poles on the jw axis)
                 mags.append(np.inf)
                 phases.append(0.0)
 

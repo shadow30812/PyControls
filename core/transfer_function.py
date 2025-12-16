@@ -10,6 +10,14 @@ class TransferFunction:
     def __init__(self, num, den):
         self.num = np.array(num, dtype=float)
         self.den = np.array(den, dtype=float)
+        self.repr_num = num
+        self.repr_den = den
+
+    def __repr__(self):
+        """
+        String representation of the transfer function.
+        """
+        return f"TF(Num={self.repr_num}, Den={self.repr_den})"
 
     def evaluate(self, s):
         """Evaluates G(s) at a complex number s using Horner's method (via np.polyval)."""

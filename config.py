@@ -3,19 +3,26 @@ Central Configuration Module for PyControls.
 
 This module acts as the control center for the simulation suite. It contains
 all physical parameters, simulation settings, controller gains, and visualization
-preferences."""
+preferences.
+"""
 
 import numpy as np
 
-MOTOR_PARAMS = {"J": 0.02, "b": 0.2, "K": 0.1, "R": 2.0, "L": 0.5}
+MOTOR_PARAMS = {
+    "J": 0.02,
+    "b": 0.2,
+    "K": 0.1,
+    "R": 2.0,
+    "L": 0.5,
+}
 
 PENDULUM_PARAMS = {
-    "M": 1.0,  # cart mass (kg)
-    "m": 0.1,  # pendulum mass (kg)
-    "l": 0.5,  # pendulum length (m)
-    "b": 0.05,  # damping coefficient
-    "g": 9.81,  # gravity (m/s^2)
-    "theta_limit": 0.5,  # radians
+    "M": 1.0,
+    "m": 0.1,
+    "l": 0.5,
+    "b": 0.05,
+    "g": 9.81,
+    "theta_limit": 0.5,
 }
 
 
@@ -33,16 +40,38 @@ DISTURBANCE_PARAMS = {
 }
 
 CONTROLLERS = [
-    {"name": "P (Weak)", "Kp": 50, "Ki": 0, "Kd": 0, "color": "#d62728"},
-    {"name": "PI (Balanced)", "Kp": 40, "Ki": 50, "Kd": 0, "color": "#1f77b4"},
-    {"name": "PID (Aggressive)", "Kp": 60, "Ki": 40, "Kd": 10, "color": "#2ca02c"},
+    {
+        "name": "P (Weak)",
+        "Kp": 50,
+        "Ki": 0,
+        "Kd": 0,
+        "color": "#d62728",
+    },
+    {
+        "name": "PI (Balanced)",
+        "Kp": 40,
+        "Ki": 50,
+        "Kd": 0,
+        "color": "#1f77b4",
+    },
+    {
+        "name": "PID (Aggressive)",
+        "Kp": 60,
+        "Ki": 40,
+        "Kd": 10,
+        "color": "#2ca02c",
+    },
 ]
 
 PLOT_PARAMS = {
     "figsize": (14, 6),
     "grid_alpha": 0.3,
     "bode_range": (-1, 3, 500),
-    "marker_style": {"color": "black", "linestyle": "--", "alpha": 0.5},
+    "marker_style": {
+        "color": "black",
+        "linestyle": "--",
+        "alpha": 0.5,
+    },
     "marker_text": {
         "x_offset": 0.05,
         "y_pos": 0.1,
@@ -62,7 +91,13 @@ CUSTOM_SIM_PARAMS = {
 ESTIMATION_PARAMS = {
     "dt": 0.001,
     "t_end": 15.0,
-    "true_system_params": {"J": 0.02, "b": 0.2, "K": 0.1, "R": 2.0, "L": 0.5},
+    "true_system_params": {
+        "J": 0.02,
+        "b": 0.2,
+        "K": 0.1,
+        "R": 2.0,
+        "L": 0.5,
+    },
     "initial_guess_J": 0.005,
     "initial_guess_b": 0.1,
     "p_init_scale": 0.1,
@@ -99,7 +134,13 @@ MPC_PARAMS = {
     "iterations": 20,
 }
 
-DC_MOTOR_DEFAULTS = {"J": 0.01, "b": 0.1, "K": 0.01, "R": 1, "L": 0.5}
+DC_MOTOR_DEFAULTS = {
+    "J": 0.01,
+    "b": 0.1,
+    "K": 0.01,
+    "R": 1,
+    "L": 0.5,
+}
 
 PENDULUM_LQR_PARAMS = {
     "Q_diag": [5.0, 1.0, 10.0, 1.0],
@@ -146,25 +187,30 @@ SOLVER_PARAMS = {
 PENDULUM_ESTIMATION_PARAMS = {
     "dt": 0.01,
     "t_end": 20.0,
-    "true_system_params": {"M": 1.0, "m": 0.1, "l": 0.5, "b": 0.05, "g": 9.81},
-    "initial_guess_m": 0.02,  # Start with 20% of true mass
-    "initial_guess_l": 0.2,  # Start with incorrect length
+    "true_system_params": {
+        "M": 1.0,
+        "m": 0.1,
+        "l": 0.5,
+        "b": 0.05,
+        "g": 9.81,
+    },
+    "initial_guess_m": 0.02,
+    "initial_guess_l": 0.2,
     "p_init_scale": 0.1,
-    # State: [x, v, theta, omega, log(m), log(l)]
     "Q_init": [1e-5, 1e-5, 1e-5, 1e-5, 1e-2, 1e-2],
-    "R": [0.001, 0.001],  # Measuring x and theta
+    "R": [0.001, 0.001],
     "sensor_noise_std": 0.01,
-    "input_amplitude": 3.0,  # Force in Newtons
-    "input_period": 4.0,  # Slower period for mechanical system
+    "input_amplitude": 3.0,
+    "input_period": 4.0,
 }
 
 UKF_PENDULUM_PARAMS = {
     "dt": 0.01,
     "t_end": 10.0,
-    "x0": [1.57, 0],  # Start at 90 degrees (horizontal)
-    "P0": 0.1,  # Initial uncertainty
-    "Q_diag": [0.001, 0.001],  # Process noise (Angle, Velocity)
-    "R_diag": [0.01],  # Measurement noise (Angle only)
+    "x0": [1.57, 0],
+    "P0": 0.1,
+    "Q_diag": [0.001, 0.001],
+    "R_diag": [0.01],
     "noise_std": 0.05,
     "alpha": 1e-3,
     "beta": 2.0,
@@ -174,40 +220,38 @@ UKF_PENDULUM_PARAMS = {
 UKF_MOTOR_PARAMS = {
     "dt": 0.001,
     "t_end": 4.0,
-    "x0": [0.0, 0.0],  # [Speed, Current]
+    "x0": [0.0, 0.0],
     "P0": 0.1,
-    "Q_diag": [0.1, 0.1],  # Process noise
-    "R_diag": [0.05, 0.05],  # Measurement noise
+    "Q_diag": [0.1, 0.1],
+    "R_diag": [0.05, 0.05],
     "noise_std": 0.02,
     "alpha": 1e-3,
     "beta": 2.0,
     "kappa": 0.0,
-    # Stiction Parameters
-    "coulomb_friction": 0.05,  # Static friction torque (Nm)
-    "viscous_friction": 0.1,  # Standard damping
+    "coulomb_friction": 0.05,
+    "viscous_friction": 0.1,
 }
 
 MPC_MOTOR_PARAMS = {
     "dt": 0.05,
     "horizon": 20,
-    "Q_diag": [20.0, 0.0],  # Heavy penalty on Speed error, some on Current
-    "R_diag": [0.01],  # Small penalty on Voltage (Cheap control)
+    "Q_diag": [20.0, 0.0],
+    "R_diag": [0.01],
     "u_min": -12.0,
     "u_max": 12.0,
-    "target_speed": 2.5,  # rad/s
-    "iterations": 50,  # ADMM iterations
+    "target_speed": 2.5,
+    "iterations": 50,
 }
 
 MPC_PENDULUM_PARAMS = {
     "dt": 0.02,
-    "horizon": 100,  # Longer horizon needed to "see" the swing up
-    "Q_diag": [1.0, 0.1, 20.0, 0.1],  # Penalize [x, v, theta, omega]
-    # Note: Theta penalty is high to force upright position
+    "horizon": 100,
+    "Q_diag": [1.0, 0.1, 20.0, 0.1],
     "R_diag": [0.1],
     "u_min": -20.0,
     "u_max": 20.0,
-    "start_theta": np.pi,  # Hanging down
-    "iterations": 30,  # iLQR iterations
+    "start_theta": np.pi,
+    "iterations": 30,
 }
 
 """
@@ -222,28 +266,14 @@ Differential Equations:
 Parameters:
 - J (kg*m^2): Rotor Inertia.
     * Represents the resistance of the rotor to changes in rotation speed.
-    * HIGHER J: Slower acceleration/deceleration; system feels "heavier".
-    * LOWER J: Faster response time; system feels "lighter" and twitchier.
-
 - b (N*m*s): Viscous Friction Coefficient.
     * Represents energy loss due to friction proportional to speed.
-    * HIGHER b: Lower steady-state speed for the same voltage; more natural damping.
-    * LOWER b: Higher max speed; system coasts longer after power is cut.
-
 - K (V/(rad/s) or Nm/A): Electromotive Force / Torque Constant.
     * Relates current to torque and speed to back-EMF.
-    * HIGHER K: More torque per amp (stronger acceleration) but also more back-EMF (limits max speed).
-    * LOWER K: Less torque per amp but higher theoretical max speed.
-
 - R (Ohms): Armature Resistance.
     * Electrical resistance of the motor windings.
-    * HIGHER R: Reduces the stall current; limits max torque; slower electrical response.
-    * LOWER R: Allows higher currents; higher power consumption and torque.
-
 - L (Henries): Armature Inductance.
     * Electrical inertia of the motor windings.
-    * HIGHER L: Smoothens current spikes; delays torque production (lag).
-    * LOWER L: Current changes instantly with voltage changes.
 
 --------------------------------------------------------------------------------
 2. SIM_PARAMS (Linear Simulation)
@@ -253,20 +283,15 @@ Settings for the standard Option 1 dashboard simulation.
 Parameters:
 - dt (s): Time Step.
     * The time increment between simulation iterations.
-    * SMALLER dt: Higher accuracy; handles fast dynamics/stiff systems better; slower computation.
-    * LARGER dt: Faster computation; risks instability if dt > system time constants.
-
 - t_end (s): Simulation Duration.
     * Total length of time to simulate.
-
 - step_volts (V): Input Magnitude.
     * The voltage applied at t=0 (Step Input).
-    * Changing this tests linearity (in linear models, output scales perfectly; in non-linear, it may saturate).
 
 --------------------------------------------------------------------------------
 3. DISTURBANCE_PARAMS (External Load)
 --------------------------------------------------------------------------------
-Simulates an external torque applied to the motor shaft (e.g., trying to stop it with your hand).
+Simulates an external torque applied to the motor shaft.
 
 Parameters:
 - enabled (bool): Master switch for disturbance logic.
@@ -282,15 +307,9 @@ A list of controller configurations to test simultaneously.
 Formula: V = Kp*e + Ki*∫e + Kd*(de/dt)
 
 Parameters:
-- Kp (Proportional):
-    * Reaction to current error.
-    * INCREASING: Faster rise time; reduces steady-state error; increases overshoot.
-- Ki (Integral):
-    * Reaction to accumulated past error.
-    * INCREASING: Eliminates steady-state error; increases overshoot/oscillation; can cause instability.
-- Kd (Derivative):
-    * Reaction to the rate of change of error.
-    * INCREASING: Reduces overshoot; adds damping; slows down response; highly sensitive to noise.
+- Kp (Proportional): Reaction to current error.
+- Ki (Integral): Reaction to accumulated past error.
+- Kd (Derivative): Reaction to the rate of change of error.
 
 --------------------------------------------------------------------------------
 5. PLOT_PARAMS (Visualization)
@@ -307,66 +326,48 @@ Parameters:
 Settings for the RK45 non-linear solver (Option 2).
 
 Parameters:
-- dt: Initial time step guess (solver will adjust this automatically).
+- dt: Initial time step guess.
 - step_time: Time when the step input triggers.
 - step_magnitude: Amplitude of the input.
 - initial_state: Tuple (rows, cols) defining the state vector shape.
 
 --------------------------------------------------------------------------------
-7. ESTIMATION_PARAMS (Extended Kalman Filter Demo)
+7. ESTIMATION_PARAMS (EKF Demo) & PENDULUM_ESTIMATION_PARAMS
 --------------------------------------------------------------------------------
-Configuration for the Option 6 Parameter Estimation experiment.
+Configuration for Option 6 Parameter Estimation.
 
-Simulation Timing:
-- dt (s): Discrete time step for the EKF loop.
-- t_end (s): Total duration of the experiment.
-
-True System (The "Reality"):
-- true_system_params: A dictionary of physical parameters (J, b, K, R, L) used to generate
-  the "real world" data that the EKF will observe.
-
-EKF Initialization (The "Learner"):
-- initial_guess_J: Starting estimate for Inertia. Set widely different from 'true' J to test convergence.
-- initial_guess_b: Starting estimate for Friction.
-- p_init_scale: Initial Uncertainty.
-    * Multiplier for the initial Covariance Matrix P.
-    * HIGH VALUE: "I have no idea what the parameters are" (Filter moves fast).
-    * LOW VALUE: "I am confident in my guess" (Filter is stubborn).
-
-Noise Covariances:
-- Q_init (Process Noise): [Speed, Current, J, b].
-    * How much we think the state changes unpredictably.
-    * High values on J/b tell the filter "Parameters might be changing", allowing it to adapt.
-- R (Measurement Noise): [Speed, Current].
-    * How much noise is in our sensors.
-    * HIGH R: Trust model more (smooth estimate).
-    * LOW R: Trust sensors more (noisy estimate).
-- sensor_noise_std: The actual noise added to the synthetic "real" data.
-
-Adaptive Logic:
-- adaptive_enabled: If True, uses two different Q matrices.
-- Q_search: High-variance Q used early to find parameters quickly.
-- Q_lock: Low-variance Q used late to stabilize the result.
-
-Input Signal:
-- input_amplitude (V): Amplitude of the square wave excitation.
-- input_period (s): Frequency of the excitation.
-    * Constant voltage is bad for estimation; dynamic input is required to make parameters observable.
+- Q_init: Initial Process Noise Covariance. High values allow parameters to adapt.
+- R: Measurement Noise Covariance.
+- p_init_scale: Scale of the initial state covariance P0.
+- initial_guess_*: Starting values for the parameters being estimated.
+- adaptive_enabled: (Motor only) Toggles adaptive Q logic.
 
 --------------------------------------------------------------------------------
-8. UKF_PARAMS (Unscented Kalman Filter)
+8. UKF_PARAMS / UKF_PENDULUM_PARAMS / UKF_MOTOR_PARAMS
 --------------------------------------------------------------------------------
-- alpha, beta, kappa: Parameters determining the spread of sigma points.
-  Standard values: alpha=1e-3, beta=2 (Gaussian), kappa=0.
+Configuration for Option 7 Unscented Kalman Filter.
 
-- Q: Process Noise
-- R: Sensor Noise
+- alpha, beta, kappa: Sigma point spread parameters.
+    * Alpha: Spread of sigma points around mean (usually small, 1e-3).
+    * Beta: Incorporates prior knowledge of distribution (2 is optimal for Gaussian).
+    * Kappa: Secondary scaling parameter (usually 0).
+- Q_diag: Diagonal elements of Process Noise Covariance.
+- R_diag: Diagonal elements of Measurement Noise Covariance.
+- noise_std: Standard deviation of synthetic noise added to simulation.
 
 --------------------------------------------------------------------------------
-9. MPC_PARAMS (Model Predictive Control)
+9. MPC_PARAMS / MPC_MOTOR_PARAMS / MPC_PENDULUM_PARAMS
 --------------------------------------------------------------------------------
-- horizon: How many steps into the future the controller looks.
-- Q_weight: Penalty for state deviation from setpoint. High value = Tight tracking.
-- R_weight: Penalty for using voltage. High value = Lazy controller / Save energy.
-- learning_rate: For the internal gradient descent optimizer.
+Configuration for Option 8 Model Predictive Control.
+
+- horizon: Number of future time steps to optimize over.
+    * Short horizon: Fast computation, myopic behavior.
+    * Long horizon: Slower computation, better strategic planning (e.g., swing-up).
+- dt: Time step used internally by the MPC solver.
+- Q_diag: State deviation penalty weights.
+    * High values force the controller to track that state closely.
+- R_diag: Control effort penalty weights.
+    * High values make the controller "lazy" or energy-efficient.
+- u_min / u_max: Hard constraints on control input (Saturation).
+- iterations: Number of optimization steps per cycle (ADMM or iLQR).
 """

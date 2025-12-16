@@ -3,13 +3,23 @@ import signal
 import sys
 
 
-def stop():
-    sys.exit(0)
-
-
 def flush():
+    """
+    Flushes standard output and error streams.
+    """
     sys.stdout.flush()
+    sys.stderr.flush()
 
 
 def kill():
-    os.kill(os.getppid(), signal.SIGHUP)
+    """
+    Forcefully kills the current process.
+    """
+    os.kill(os.getpid(), signal.SIGKILL)
+
+
+def stop():
+    """
+    Exits the program gracefully.
+    """
+    sys.exit(0)

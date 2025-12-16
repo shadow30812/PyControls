@@ -13,15 +13,26 @@ from modules.physics_engine import (
 
 class InteractiveLab:
     """
-    Real-time interactive simulation environment.
+    Manages a real-time interactive simulation environment.
 
-    Current scope:
-    - Fixed-step state propagation
-    - DC motor only
-    - No visuals, no input, no controllers
+    This class orchestrates the simulation loop, including:
+    - Fixed-step state propagation using RK4 integration.
+    - Handling user input (manual control) and switching to automatic controllers.
+    - evaluating success/failure criteria (e.g., stability limits).
+    - Optional state estimation and real-time visualization.
+
+    Current support includes DC Motor (Speed Control) and Inverted Pendulum (Stabilization).
     """
 
     def __init__(self, system_descriptor, params, dt=0.01):
+        """
+        Initializes the simulation environment.
+
+        Args:
+            system_descriptor (SystemDescriptor): Metadata for the active system.
+            params (dict): Physical parameters for the system dynamics.
+            dt (float, optional): Simulation time step in seconds. Defaults to 0.01.
+        """
         self.status = "RUNNING"
         self.failure_reason = None
         self.max_time = 20.0
@@ -46,7 +57,13 @@ class InteractiveLab:
 
     def initialize(self):
         """
-        Initialize lab state and system-specific parameters.
+        Resets the simulation state and configures system-specific goals.
+
+        - DC Motor: Starts at rest. Goal is to reach 'omega_ref' within tolerance.
+        - Pendulum: Starts slightly tilted (0.05 rad). Goal is to keep theta within limits.
+
+        Raises:
+            NotImplementedError: If the system ID is not recognized.
         """
         self.time = 0.0
         self.success_timer = 0.0
@@ -74,11 +91,20 @@ class InteractiveLab:
 
     def step(self, disturbance=0.0):
         """
-        Advance simulation by one fixed timestep.
+        Advances the simulation by one fixed time step.
+
+        This method:
+        1. Checks time limits and input modes.
+        2. Computes the control input (Manual vs Auto).
+        3. Integrates the system dynamics using RK4.
+        4. Updates the State Estimator (if configured) with the new measurement.
+        5. Evaluates pass/fail rules.
 
         Args:
-            u: control input (voltage for DC motor)
-            disturbance: external disturbance (e.g. load torque)
+            disturbance (float, optional): External disturbance to apply. Defaults to 0.0.
+
+        Returns:
+            np.ndarray: The updated state vector.
         """
         if self.time >= self.max_time:
             self.status = "FAILED"
@@ -135,11 +161,20 @@ class InteractiveLab:
         return self.state
 
     def reset(self):
+        """
+        Clears the current simulation state, stopping execution.
+        """
         self.state = None
         self.time = 0.0
         self.running = False
 
     def evaluate_rules(self):
+        """
+        Checks system-specific rules to determine SUCCESS or FAILED status.
+
+        - DC Motor: Success if speed stays within tolerance of reference for 3 seconds.
+        - Pendulum: Fail if angle exceeds limits. Success if it stays upright for 5 seconds.
+        """
         if self.descriptor.system_id == "dc_motor":
             omega = self.state[0]
             error = abs(omega - self.omega_ref)
@@ -164,6 +199,12 @@ class InteractiveLab:
                     self.status = "SUCCESS"
 
     def get_control_input(self):
+        """
+        Retrieves the control signal 'u' based on the active mode.
+
+        Returns:
+            float: The control input value.
+        """
         if self.control_mode == "MANUAL":
             return self.manual_input
 
@@ -176,16 +217,38 @@ class InteractiveLab:
             raise ValueError(f"Unknown control mode: {self.control_mode}")
 
     def set_manual_input(self, u):
+        """
+        Sets the control input value directly (used by manual interface).
+        """
         self.manual_input = float(u)
 
     def set_auto_controller(self, controller_fn):
+        """
+        Registers an automatic controller function and switches to AUTO mode.
+
+        Args:
+            controller_fn (callable): A function f(state, time) -> u.
+        """
         self.controller = controller_fn
         self.control_mode = "AUTO"
 
     def set_manual_mode(self):
+        """
+        Switches control authority to the manual user inputs.
+        """
         self.control_mode = "MANUAL"
 
     def handle_keyboard_input(self):
+        """
+        Poller for non-blocking keyboard input (Unix-style).
+
+        Controls:
+            'a'/'d': Decrease/Increase input.
+            's': Zero input.
+            'm': Switch to Manual mode.
+            'o': Switch to Auto mode.
+            'q': Quit simulation (Fail).
+        """
         if not sys.stdin.isatty():
             return
 
@@ -216,9 +279,11 @@ class InteractiveLab:
                 self.control_mode = "AUTO"
 
     def init_visualization(self):
+        """
+        Sets up the Matplotlib figure for real-time plotting.
+        """
         self.fig, self.ax = plt.subplots()
         self.ax.axhline(0.0, color="k", linestyle="--")
-        # self.ax.set_ylim(-1.0, 1.0)
 
         if self.descriptor.system_id == "dc_motor":
             self.ax.set_title("DC Motor Speed")
@@ -240,6 +305,9 @@ class InteractiveLab:
         plt.show()
 
     def update_visualization(self):
+        """
+        Updates the real-time plot with the latest simulation data.
+        """
         self.times.append(self.time)
 
         if self.descriptor.system_id == "dc_motor":
@@ -253,12 +321,24 @@ class InteractiveLab:
         plt.pause(0.001)
 
     def set_estimator(self, estimator, measurement_func=None):
+        """
+        Attaches a state estimator (e.g., Kalman Filter) to the simulation loop.
+
+        Args:
+            estimator: An object with predict(u, dt) and update(y) methods.
+            measurement_func (callable, optional): Function mapping full state x to measurement y.
+                                                   If None, assumes direct full state measurement.
+        """
         self.estimator = estimator
         self.use_estimator = True
         self.measurement_func = measurement_func
 
 
 def simple_dc_motor_pid(omega_ref, Kp=1.0):
+    """
+    Factory for a simple Proportional controller for the DC motor.
+    """
+
     def controller(state, t):
         omega = state[0]
         return Kp * (omega_ref - omega)
@@ -267,6 +347,11 @@ def simple_dc_motor_pid(omega_ref, Kp=1.0):
 
 
 def pendulum_lqr_controller(K):
+    """
+    Factory for an LQR controller for the pendulum.
+    Assumes u = -K * x.
+    """
+
     def controller(state, t):
         return float(-K @ state)
 

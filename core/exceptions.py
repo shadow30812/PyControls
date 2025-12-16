@@ -37,3 +37,27 @@ class UnstableSystemError(PyControlsError):
     """
 
     pass
+
+
+class InvalidParameterError(ValueError, PyControlsError):
+    """
+    Raised when a physical parameter is invalid (e.g., negative mass, zero inertia).
+    """
+
+    pass
+
+
+class SolverError(RuntimeError, PyControlsError):
+    """
+    Raised when a numerical solver encounters a critical failure (e.g., step size underflow).
+    """
+
+    pass
+
+
+class ControllerConfigError(ValueError, PyControlsError):
+    """
+    Raised when a controller configuration is invalid (e.g., missing gains, invalid limits).
+    """
+
+    pass
