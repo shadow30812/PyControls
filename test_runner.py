@@ -1,23 +1,17 @@
-"""
-An automation for
-```
-python -m unittest discover tests
-```
-to be run from the project's root directory
-"""
+import unittest
 
-import subprocess
-import sys
-from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+def run_tests():
+    """
+    Discover and run all tests in the 'tests' directory.
+    """
+    loader = unittest.TestLoader()
+    start_dir = "tests"
+    suite = loader.discover(start_dir)
 
-result = subprocess.run(
-    [sys.executable, "-m", "unittest", "discover", "tests"],
-    cwd=PROJECT_ROOT,
-    text=True,
-    capture_output=True,
-)
+    runner = unittest.TextTestRunner()
+    runner.run(suite)
 
-print(result.stdout)
-print(result.stderr)
+
+if __name__ == "__main__":
+    run_tests()
