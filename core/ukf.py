@@ -76,10 +76,8 @@ class UnscentedKalmanFilter:
 
         x_pred = np.dot(self.Wm, self.sigmas_h)
 
-        P_pred = np.zeros((self.n, self.n))
-        for i in range(2 * self.n + 1):
-            y = self.sigmas_h[i] - x_pred
-            P_pred += self.Wc[i] * np.outer(y, y)
+        Y = self.sigmas_h - x_pred
+        P_pred = (self.Wc[:, None, None] * (Y[:, :, None] * Y[:, None, :])).sum(axis=0)
         P_pred += self.Q
 
         self.x = x_pred
@@ -90,6 +88,17 @@ class UnscentedKalmanFilter:
         """
         Measurement Update Step: Maps sigma points to measurement space.
         """
+        z = np.asarray(z)
+
+        if z.shape[0] != self.m:
+            raise ValueError(
+                f"Measurement dimension mismatch: expected {self.m}, got {z.shape[0]}"
+            )
+
+        test_z = self.h(self.sigmas_f[0])
+        if np.asarray(test_z).shape[0] != self.m:
+            raise ValueError("Measurement function output dimension mismatch")
+
         num_sigmas = 2 * self.n + 1
         Z_sigmas = np.zeros((num_sigmas, self.m))
 
@@ -101,13 +110,13 @@ class UnscentedKalmanFilter:
         S = np.zeros((self.m, self.m))
         Pxz = np.zeros((self.n, self.m))
 
-        for i in range(num_sigmas):
-            dz = Z_sigmas[i] - z_pred
-            dx = self.sigmas_f[i] - self.x
+        DZ = Z_sigmas - z_pred
+        DX = self.sigmas_f - self.x
 
-            S += self.Wc[i] * np.outer(dz, dz)
-            Pxz += self.Wc[i] * np.outer(dx, dz)
+        S = (self.Wc[:, None, None] * (DZ[:, :, None] * DZ[:, None, :])).sum(axis=0)
+        S += self.R
 
+        Pxz = (self.Wc[:, None, None] * (DX[:, :, None] * DZ[:, None, :])).sum(axis=0)
         S += self.R
 
         K = np.dot(Pxz, np.linalg.inv(S))

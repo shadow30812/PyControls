@@ -55,17 +55,19 @@ class ModelPredictiveControl:
         else:
             self.u_dim = 1
 
-        self.Q = np.eye(self.x_dim) if Q is None else np.array(Q)
-        self.R = np.eye(self.u_dim) if R is None else np.array(R)
+        self.Q = np.eye(self.x_dim) if Q is None else np.array(Q, dtype=float)
+        self.R = np.eye(self.u_dim) if R is None else np.array(R, dtype=float)
 
         if A is not None and B is not None:
-            print("MPC: Linear matrices detected. Using ADMM solver.")
+            print("\nMPC: Linear matrices detected. Using ADMM solver.\n")
             self.mode = "linear"
             self.A = np.array(A, dtype=float)
             self.B = np.array(B, dtype=float)
             self._setup_admm()
         else:
-            print("MPC: No linear matrices. Using iLQR solver for nonlinear dynamics.")
+            print(
+                "\nMPC: No linear matrices. Using iLQR solver for nonlinear dynamics.\n"
+            )
             self.mode = "nonlinear"
             self.f = model_func
             self.A = None
@@ -74,6 +76,9 @@ class ModelPredictiveControl:
                 raise ValueError("For Nonlinear MPC, 'model_func' must be provided.")
 
         self.u_seq = np.zeros((self.N, self.u_dim))
+        self._x_seq = np.zeros((self.N + 1, self.x_dim))
+        self._k = np.zeros((self.N, self.u_dim))
+        self._K = np.zeros((self.N, self.u_dim, self.x_dim))
 
     def _setup_admm(self):
         """
@@ -85,45 +90,42 @@ class ModelPredictiveControl:
 
         S_u = np.zeros((self.N * self.x_dim, self.N * self.u_dim))
 
+        A_powers = [np.eye(self.x_dim)]
+        for _ in range(self.N):
+            A_powers.append(A_powers[-1] @ self.A)
+
         for r in range(self.N):
             row_start = r * self.x_dim
             for c in range(r + 1):
                 col_start = c * self.u_dim
-                power = r - c
-                mat = np.linalg.matrix_power(self.A, power) @ self.B
+                mat = A_powers[r - c] @ self.B
                 S_u[
                     row_start : row_start + self.x_dim,
                     col_start : col_start + self.u_dim,
                 ] = mat
 
         self.S_u = S_u
-
         self.H = self.S_u.T @ Q_bar @ self.S_u + R_bar
-
         self.rho = MPC_SOLVER_PARAMS["rho"]
         self.H_inv = np.linalg.inv(self.H + self.rho * np.eye(self.H.shape[0]))
-
         self.Q_bar = Q_bar
+        self._A_powers = A_powers
 
     def _solve_admm(self, x_current, x_ref, iterations=50):
         """
         Solves Min 1/2 U'HU + q'U s.t. u_min < U < u_max
         using Alternating Direction Method of Multipliers.
         """
-        free_response = []
-        curr = x_current.copy()
-        for _ in range(self.N):
-            curr = self.A @ curr
-            free_response.append(curr)
-        free_response = np.array(free_response).flatten()
+        free_response = np.zeros(self.N * self.x_dim)
+        for i in range(self.N):
+            free_response[i * self.x_dim : (i + 1) * self.x_dim] = (
+                self._A_powers[i + 1] @ x_current
+            )
 
         ref_vec = np.tile(x_ref, self.N)
+        q = self.S_u.T @ self.Q_bar @ (free_response - ref_vec)
 
-        error_free = free_response - ref_vec
-
-        q = self.S_u.T @ self.Q_bar @ error_free
-
-        x_val = self.u_seq.flatten()
+        x_val = self.u_seq.reshape(-1)
         z_val = x_val.copy()
         u_val = np.zeros_like(x_val)
 
@@ -131,28 +133,29 @@ class ModelPredictiveControl:
             rhs = self.rho * (z_val - u_val) - q
             x_val = self.H_inv @ rhs
             z_val = np.clip(x_val + u_val, self.u_min, self.u_max)
-            u_val = u_val + x_val - z_val
+            u_val += x_val - z_val
 
         return z_val.reshape(self.N, self.u_dim)
 
     def _get_derivatives(self, x, u):
-        """Finite difference derivatives for iLQR (Robust for any user function)."""
-        eps = MPC_SOLVER_PARAMS["finite_diff_eps"]
+        """Complex step derivatives for iLQR (Robust for any user function)."""
+        eps = 1e-20
         nx = self.x_dim
         nu = self.u_dim
 
         A = np.zeros((nx, nx))
-        f0 = self.f(x, u, self.dt)
         for i in range(nx):
-            x_p = x.copy()
-            x_p[i] += eps
-            A[:, i] = (self.f(x_p, u, self.dt) - f0) / eps
+            dx = np.zeros(nx, dtype=complex)
+            dx[i] = 1j * eps
+            A[:, i] = self.f((x.astype(complex) + dx), u, self.dt).imag / eps
 
         B = np.zeros((nx, nu))
         for i in range(nu):
-            u_p = u.copy()
-            u_p[i] += eps
-            B[:, i] = (self.f(x, u_p, self.dt) - f0) / eps
+            du = np.zeros(nu, dtype=complex)
+            du[i] = 1j * eps
+            B[:, i] = (
+                self.f(x.astype(complex), (u.astype(complex) + du), self.dt).imag / eps
+            )
 
         return A, B
 
@@ -162,71 +165,76 @@ class ModelPredictiveControl:
         Solves nonlinear optimal control by iteratively linearizing the dynamics
         and solving a time-varying LQR problem backward.
         """
-        u_seq = self.u_seq.copy()
-        x_seq = [x_current]
-
-        curr = x_current.copy()
+        self._x_seq[0] = x_current
         for i in range(self.N):
-            curr = self.f(curr, u_seq[i], self.dt)
-            x_seq.append(curr)
+            self._x_seq[i + 1] = self.f(self._x_seq[i], self.u_seq[i], self.dt)
 
         for _ in range(iterations):
-            k_gains = []
-            K_gains = []
-
-            delta_x = x_seq[-1] - x_ref
-            V_x = self.Q @ delta_x
+            V_x = self.Q @ (self._x_seq[-1] - x_ref)
             V_xx = self.Q
 
             for i in range(self.N - 1, -1, -1):
-                x_i = x_seq[i]
-                u_i = u_seq[i]
+                x_i = self._x_seq[i]
+                u_i = self.u_seq[i]
 
                 A_k, B_k = self._get_derivatives(x_i, u_i)
 
                 l_x = self.Q @ (x_i - x_ref)
                 l_u = self.R @ u_i
-                l_xx = self.Q
-                l_uu = self.R
 
                 Q_x = l_x + A_k.T @ V_x
                 Q_u = l_u + B_k.T @ V_x
-                Q_xx = l_xx + A_k.T @ V_xx @ A_k
-                Q_uu = l_uu + B_k.T @ V_xx @ B_k
+                Q_xx = self.Q + A_k.T @ V_xx @ A_k
+                Q_uu = self.R + B_k.T @ V_xx @ B_k
                 Q_ux = A_k.T @ V_xx @ B_k
 
                 Q_uu_reg = Q_uu + np.eye(self.u_dim) * MPC_SOLVER_PARAMS["ilqr_reg"]
                 Q_uu_inv = np.linalg.inv(Q_uu_reg)
 
-                k = -Q_uu_inv @ Q_u
-                K = -Q_uu_inv @ Q_ux.T
+                self._k[i] = -Q_uu_inv @ Q_u
+                self._K[i] = -Q_uu_inv @ Q_ux.T
 
-                k_gains.append(k)
-                K_gains.append(K)
+                V_x = Q_x + self._K[i].T @ Q_uu @ self._k[i]
+                V_xx = Q_xx + self._K[i].T @ Q_uu @ self._K[i]
 
-                V_x = Q_x + K.T @ Q_uu @ k + K.T @ Q_u + Q_ux @ k
-                V_xx = Q_xx + K.T @ Q_uu @ K + K.T @ Q_ux.T + Q_ux @ K
+            alphas = MPC_SOLVER_PARAMS["ilqr_alphas"]
 
-            k_gains = k_gains[::-1]
-            K_gains = K_gains[::-1]
+            best_cost = np.inf
+            best_u_seq = None
+            best_x_seq = None
 
-            x_new_seq = [x_current]
-            u_new_seq = np.zeros_like(u_seq)
-            curr = x_current.copy()
+            for alpha in alphas:
+                curr = x_current
+                x_seq = np.zeros_like(self._x_seq)
+                u_seq = np.zeros_like(self.u_seq)
+                x_seq[0] = curr
+                cost = 0.0
 
-            for i in range(self.N):
-                delta_x = curr - x_seq[i]
-                u_ctrl = u_seq[i] + k_gains[i] + K_gains[i] @ delta_x
-                u_ctrl = np.clip(u_ctrl, self.u_min, self.u_max)
+                for i in range(self.N):
+                    u = (
+                        self.u_seq[i]
+                        + alpha * self._k[i]
+                        + self._K[i] @ (curr - self._x_seq[i])
+                    )
+                    u = np.clip(u, self.u_min, self.u_max)
+                    u_seq[i] = u
+                    cost += (curr - x_ref).T @ self.Q @ (
+                        curr - x_ref
+                    ) + u.T @ self.R @ u
+                    curr = self.f(curr, u, self.dt)
+                    x_seq[i + 1] = curr
 
-                u_new_seq[i] = u_ctrl
-                curr = self.f(curr, u_ctrl, self.dt)
-                x_new_seq.append(curr)
+                cost += (curr - x_ref).T @ self.Q @ (curr - x_ref)
 
-            u_seq = u_new_seq
-            x_seq = x_new_seq
+                if cost < best_cost:
+                    best_cost = cost
+                    best_u_seq = u_seq
+                    best_x_seq = x_seq
 
-        return u_seq
+            self.u_seq[:] = best_u_seq
+            self._x_seq[:] = best_x_seq
+
+        return self.u_seq
 
     def optimize(self, x_current, x_ref, **kwargs):
         """
@@ -250,9 +258,9 @@ class ModelPredictiveControl:
             )
             self.u_seq = self._solve_ilqr(x_current, x_ref, iterations=iters)
 
-        u_optimal = self.u_seq[0]
+        u_optimal = self.u_seq[0].copy()
 
-        self.u_seq = np.roll(self.u_seq, -1, axis=0)
+        self.u_seq[:-1] = self.u_seq[1:]
         self.u_seq[-1] = 0.0
 
         return u_optimal

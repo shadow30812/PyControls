@@ -2,6 +2,19 @@ import numpy as np
 
 from core.exceptions import DimensionMismatchError
 
+try:
+    from numba import njit
+
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
+
+    def njit(*args, **kwargs):
+        def decorator(func):
+            return func
+
+        return decorator
+
 
 class StateSpace:
     """
@@ -65,6 +78,8 @@ class StateSpace:
                 f"D must match outputs/inputs, got {self.D.shape} (expected {self.n_outputs}x{self.n_inputs})"
             )
 
+        self._I = np.eye(self.n_states)
+
     def get_frequency_response(self, omega_range, input_idx=0, output_idx=0):
         """
         Computes the frequency response H(jw) directly from state-space matrices
@@ -95,25 +110,23 @@ class StateSpace:
         if not (0 <= output_idx < self.n_outputs):
             raise ValueError(f"Invalid output_idx {output_idx}")
 
-        mags = []
-        phases = []
-
-        I = np.eye(self.n_states)
+        omega = np.asarray(omega_range)
+        mags = np.empty_like(omega, dtype=float)
+        phases = np.empty_like(omega, dtype=float)
 
         B_j = self.B[:, input_idx : input_idx + 1]
         C_i = self.C[output_idx : output_idx + 1, :]
         D_ij = self.D[output_idx, input_idx]
 
-        for w in omega_range:
+        for k, w in enumerate(omega):
             s = 1j * w
             try:
-                term = np.linalg.solve(s * I - self.A, B_j)
-                resp_complex = (C_i @ term)[0, 0] + D_ij
-
-                mags.append(20 * np.log10(np.abs(resp_complex)))
-                phases.append(np.degrees(np.angle(resp_complex)))
+                term = np.linalg.solve(s * self._I - self.A, B_j)
+                resp = (C_i @ term)[0, 0] + D_ij
+                mags[k] = 20.0 * np.log10(np.abs(resp))
+                phases[k] = np.degrees(np.angle(resp))
             except np.linalg.LinAlgError:
-                mags.append(np.inf)
-                phases.append(0.0)
+                mags[k] = np.inf
+                phases[k] = 0.0
 
-        return np.array(mags), np.array(phases)
+        return mags, phases

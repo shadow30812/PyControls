@@ -12,17 +12,33 @@ hc = 1e-12
 hf = 1e-6
 ITER_MAX = 100
 
+try:
+    from numba import njit
+
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
+
+    def njit(*args, **kwargs):
+        def decorator(func):
+            return func
+
+        return decorator
+
 
 def implicit_mul(expr: str) -> str:
     """Inserts explicit multiplication signs for implicit multiplication."""
-    expr = re.sub(r"(?<=[0-9\)])\s*(?=[A-Za-z\(])", "*", expr)
-    expr = re.sub(r"(?<=[A-Za-z\)])\s*(?=[0-9])", "*", expr)
+    _IMPLICIT_1 = re.compile(r"(?<=[0-9\)])\s*(?=[A-Za-z\(])")
+    _IMPLICIT_2 = re.compile(r"(?<=[A-Za-z\)])\s*(?=[0-9])")
+    expr = re.sub(_IMPLICIT_1, "*", expr)
+    expr = re.sub(_IMPLICIT_2, "*", expr)
     return expr
 
 
 def preprocess_power(expr: str) -> str:
     """Converts caret power syntax (x^2) to Python syntax (x**2)."""
-    return re.sub(r"(?<=\w)\^(?=\w|\()", "**", expr)
+    _PRE = re.compile(r"(?<=\w)\^(?=\w|\()")
+    return re.sub(_PRE, "**", expr)
 
 
 def make_func(
@@ -38,35 +54,38 @@ def make_func(
         {k: getattr(cmath, k) for k in dir(cmath) if not k.startswith("_")}
     )
 
+    code = compile(expr, "<expr>", "eval")
+
     def f(value):
         safe_locals[var_name] = value
         try:
-            return eval(expr, {"__builtins__": {}}, safe_locals)
+            return eval(code, {"__builtins__": {}}, safe_locals)
         except Exception:
             return 0.0
 
     return f
 
 
-def make_system_func(expr_string: str) -> Callable[[np.ndarray, float], np.ndarray]:
+def make_system_func(expr_string: str):
     """Compiles a string expression into a state-space function f(t, x, u)."""
+
     expr = preprocess_power(implicit_mul(expr_string))
-    safe_locals = {"pi": np.pi, "e": np.e}
-    for name in dir(np):
-        if not name.startswith("_"):
-            safe_locals[name] = getattr(np, name)
+    safe_locals = {
+        name: getattr(np, name) for name in dir(np) if not name.startswith("_")
+    }
+
+    safe_locals.update({"pi": np.pi, "e": np.e})
+    code = compile(expr, "<system_func>", "eval")
 
     def f(t, x, u=0.0):
-        safe_locals["t"] = t
-        safe_locals["x"] = x
-        safe_locals["u"] = u
+        loc = safe_locals
+        loc["t"] = t
+        loc["x"] = x
+        loc["u"] = u
         try:
-            res = eval(expr, {"__builtins__": {}}, safe_locals)
-            if np.isscalar(res):
-                return np.full_like(x, res)
-            return np.array(res)
-        except Exception as e:
-            print(f"DEBUG: Eq Eval Error: {e} | Parsed Expr: {expr}")
+            res = eval(code, {"__builtins__": {}}, loc)
+            return np.asarray(res, dtype=float)
+        except Exception:
             return np.zeros_like(x)
 
     return f
@@ -78,7 +97,7 @@ class Differentiation:
             arg = complex(point, hc)
             func_result = func(arg)
             imag_part = complex(func_result).imag
-            if abs(imag_part) > 0.0:
+            if imag_part != 0.0:
                 return imag_part / hc
             else:
                 raise ValueError("Complex step did not propagate")
@@ -87,6 +106,45 @@ class Differentiation:
                 return (func(point + hf) - func(point - hf)) / (2 * hf)
             except Exception:
                 return 0.0
+
+
+def jacobian(func, x, *args):
+    """
+    Computes the Jacobian of a vector-valued function using complex-step differentiation.
+
+    Args:
+        func: Callable f(x, *args) -> array_like
+        x: 1D numpy array
+        *args: Additional arguments passed to func
+
+    Returns:
+        J: Jacobian matrix (m x n)
+    """
+    x = np.asarray(x, dtype=float)
+    n = x.size
+    eps = hc
+
+    y0 = np.asarray(func(x, *args), dtype=float)
+    m = y0.size
+
+    J = np.zeros((m, n), dtype=float)
+
+    try:
+        x_c = x.astype(complex)
+        for i in range(n):
+            x_pert = x_c.copy()
+            x_pert[i] += 1j * eps
+            y_pert = func(x_pert, *args)
+            J[:, i] = np.imag(y_pert) / eps
+        return J
+    except Exception:
+        for i in range(n):
+            dx = np.zeros(n)
+            dx[i] = hf
+            f_plus = func(x + dx, *args)
+            f_minus = func(x - dx, *args)
+            J[:, i] = (f_plus - f_minus) / (2 * hf)
+        return J
 
 
 class Root:

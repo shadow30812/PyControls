@@ -5,6 +5,102 @@ from core.control_utils import dlqr
 from core.state_space import StateSpace
 from modules.physics_engine import pendulum_dynamics, rk4_fixed_step
 
+try:
+    from numba import njit
+
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
+
+    def njit(*args, **kwargs):
+        def decorator(func):
+            return func
+
+        return decorator
+
+
+@njit(cache=True)
+def _linear_pendulum_matrices(M, m, l, b, g):
+    A = np.zeros((4, 4))
+    A[0, 1] = 1.0
+    A[1, 2] = -m * g / M
+    A[2, 3] = 1.0
+    A[3, 2] = (M + m) * g / (M * l)
+    A[3, 3] = -(M + m) * b / (M * m * l * l)
+
+    B = np.zeros((4, 1))
+    B[1, 0] = 1.0 / M
+    B[3, 0] = -1.0 / (M * l)
+
+    return A, B
+
+
+@njit(cache=True)
+def _pendulum_param_step(x, force, M, b, g):
+    x_dot = x[1]
+    theta = x[2]
+    omega = x[3]
+
+    m_est = np.exp(x[4])
+    l_est = np.exp(x[5])
+
+    sin_t = np.sin(theta)
+    cos_t = np.cos(theta)
+
+    denom = M + m_est * (1.0 - cos_t * cos_t)
+
+    theta_ddot = (
+        (M + m_est) * g * sin_t
+        - cos_t * (force + m_est * l_est * omega * omega * sin_t)
+        - (M + m_est) * b * omega / (m_est * l_est)
+    ) / (l_est * denom)
+
+    x_ddot = (
+        force + m_est * l_est * omega * omega * sin_t - m_est * g * sin_t * cos_t
+    ) / denom
+
+    return x_dot, x_ddot, omega, theta_ddot
+
+
+@njit(cache=True)
+def _pendulum_ukf_step(theta, omega, g, l, b, m, dt):
+    theta_next = theta + omega * dt
+    omega_next = omega + (-(g / l) * np.sin(theta) - (b / (m * l * l)) * omega) * dt
+    return theta_next, omega_next
+
+
+@njit(cache=True)
+def _param_est_wrapper(x, force, M, b, g):
+    x_flat = x.ravel()
+    dx0, dx1, dx2, dx3 = _pendulum_param_step(x_flat, force, M, b, g)
+
+    res = np.zeros(6)
+    res[0] = dx0
+    res[1] = dx1
+    res[2] = dx2
+    res[3] = dx3
+
+    return res.reshape(-1, 1)
+
+
+@njit(cache=True)
+def _param_est_batch(x, force, M, b, g):
+    n_batch = x.shape[1]
+    res = np.zeros((6, n_batch))
+
+    for i in range(n_batch):
+        x_col = x[:, i]
+        f = force[i]
+
+        dx0, dx1, dx2, dx3 = _pendulum_param_step(x_col, f, M, b, g)
+
+        res[0, i] = dx0
+        res[1, i] = dx1
+        res[2, i] = dx2
+        res[3, i] = dx3
+
+    return res
+
 
 class InvertedPendulum:
     """
@@ -61,24 +157,8 @@ class InvertedPendulum:
         Returns:
             tuple: (A, B) numpy arrays.
         """
-        M = self.params["M"]
-        m = self.params["m"]
-        l = self.params["l"]
-        b = self.params["b"]
-        g = self.params["g"]
-
-        A = np.zeros((4, 4))
-        A[0, 1] = 1.0
-        A[1, 2] = -m * g / M
-        A[2, 3] = 1.0
-        A[3, 2] = (M + m) * g / (M * l)
-        A[3, 3] = -(M + m) * b / (M * m * l**2)
-
-        B = np.zeros((4, 1))
-        B[1, 0] = 1.0 / M
-        B[3, 0] = -1.0 / (M * l)
-
-        return A, B
+        p = self.params
+        return _linear_pendulum_matrices(p["M"], p["m"], p["l"], p["b"], p["g"])
 
     def get_parameter_estimation_func(self):
         """
@@ -97,16 +177,21 @@ class InvertedPendulum:
         Returns:
             function: A callable f(x, u) that returns the derivatives of the 6-element state vector.
         """
-        M_const = self.params["M"]
-        b_const = self.params["b"]
-        g_const = self.params["g"]
+        M = self.params["M"]
+        b = self.params["b"]
+        g = self.params["g"]
 
-        def pendulum_dynamics_6_state(x, u):
-            x_vel = x[1]
-            theta = x[2]
-            theta_dot = x[3]
-            m_est = np.exp(x[4])
-            l_est = np.exp(x[5])
+        def pendulum_dynamics(x, u):
+            if x.ndim == 2 and x.shape[1] > 1:
+                u_arr = np.atleast_1d(u).ravel()
+                if u_arr.size == 1:
+                    u_arr = np.full(x.shape[1], u_arr[0])
+                elif u_arr.size != x.shape[1]:
+                    raise ValueError(
+                        f"Input u shape {u.shape} does not match state batch size {x.shape[1]}"
+                    )
+
+                return _param_est_batch(x, u_arr, M, b, g)
 
             if hasattr(u, "ndim") and u.ndim == 2:
                 force = u[0, 0]
@@ -114,37 +199,15 @@ class InvertedPendulum:
                 force = u[0]
             else:
                 force = u
+            return _param_est_wrapper(x, force, M, b, g)
 
-            sin_t = np.sin(theta)
-            cos_t = np.cos(theta)
-            denom = M_const + m_est * (1 - cos_t**2)
-
-            term_grav = (M_const + m_est) * g_const * sin_t
-            term_coupled = -cos_t * (force + m_est * l_est * theta_dot**2 * sin_t)
-            term_fric = -(M_const + m_est) * b_const * theta_dot / (m_est * l_est)
-
-            theta_ddot = (term_grav + term_coupled + term_fric) / (l_est * denom)
-
-            term3 = force + m_est * l_est * theta_dot**2 * sin_t
-            term4 = -m_est * g_const * sin_t * cos_t
-            x_ddot = (term3 + term4) / denom
-
-            dm_dt = np.zeros_like(x_vel)
-            dl_dt = np.zeros_like(x_vel)
-
-            result = np.array([x_vel, x_ddot, theta_dot, theta_ddot, dm_dt, dl_dt])
-
-            if result.ndim == 1:
-                return result.reshape(-1, 1)
-            return result
-
-        return pendulum_dynamics_6_state
+        return pendulum_dynamics
 
     def get_state_space(self):
         """
         Returns the standard Linear Time-Invariant (LTI) StateSpace object.
 
-        States:  [x, x_dot, theta, theta_dot]
+        States:  [x, x_dot, theta, omega]
         Outputs: Full state output (C = Identity), usually measuring all 4 states for simulation,
                  though physical measurement might vary.
 
@@ -163,7 +226,7 @@ class InvertedPendulum:
         The Kalman Filter uses this model to estimate steady-state errors.
 
         Augmented State Vector:
-            [x, x_dot, theta, theta_dot, Disturbance_Bias]
+            [x, x_dot, theta, omega, Disturbance_Bias]
 
         The B matrix is augmented assuming the control input 'u' is known and does not
         affect the disturbance state directly.
@@ -172,22 +235,18 @@ class InvertedPendulum:
             StateSpace: The augmented linear system model.
         """
         A_std, B_std = self._linear_matrices()
-        B_dist_effect = np.zeros((4, 1))
-        B_dist_effect[3, 0] = (self.params["M"] + self.params["m"]) / (
+        B_dist = np.zeros((4, 1))
+        B_dist[3, 0] = (self.params["M"] + self.params["m"]) / (
             self.params["M"] * self.params["m"] * self.params["l"] ** 2
         )
 
-        top = np.hstack((A_std, B_dist_effect))
-        bottom = np.zeros((1, 5))
-        A_aug = np.vstack((top, bottom))
-
+        A_aug = np.vstack((np.hstack((A_std, B_dist)), np.zeros((1, 5))))
         B_aug = np.vstack((B_std, [[0]]))
 
         C_aug = np.zeros((4, 5))
         C_aug[:, :4] = np.eye(4)
 
         D_aug = np.zeros((4, 1))
-
         return StateSpace(A_aug, B_aug, C_aug, D_aug)
 
     def dlqr_gain(self, dt=0.01):
@@ -309,15 +368,9 @@ class InvertedPendulum:
         m = self.params["m"]
 
         def pendulum_ukf_dynamics(x, u, dt):
-            theta = x[0]
-            omega = x[1]
-
-            theta_next = theta + omega * dt
-
-            alpha = -(g / l) * np.sin(theta) - (b / (m * l**2)) * omega
-            omega_next = omega + alpha * dt
-
-            return np.array([theta_next, omega_next])
+            theta, omega = x
+            th, om = _pendulum_ukf_step(theta, omega, g, l, b, m, dt)
+            return np.array([th, om])
 
         def measurement_model(x):
             return np.array([x[0]])
@@ -338,43 +391,65 @@ class InvertedPendulum:
         Returns:
             function: A callable f(x, u, dt) -> x_next.
         """
-        params = self.params.copy()
+        M = self.params["M"]
+        b = self.params["b"]
+        g = self.params["g"]
+        m = self.params["m"]
+        l = self.params["l"]
+        log_m, log_l = np.log(m), np.log(l)
 
-        def mpc_dynamics(x, u, dt):
-            theta = x[2]
-            theta_dot = x[3]
-            x_dot = x[1]
+        @njit(cache=True)
+        def mpc_dynamics_fast(x, u, dt):
+            u_arr = np.atleast_1d(u)
+            force = u_arr.flat[0]
+            x_flat = x.ravel()
 
-            force = u[0]
+            x_aug = np.zeros(6)
+            x_aug[:4] = x_flat
+            x_aug[4] = log_m
+            x_aug[5] = log_l
 
-            M = params["M"]
-            m = params["m"]
-            l = params["l"]
-            b = params["b"]
-            g = params["g"]
+            _, x_ddot, _, theta_ddot = _pendulum_param_step(x_aug, force, M, b, g)
 
-            sin_t = np.sin(theta)
-            cos_t = np.cos(theta)
-            denom = M + m * (1 - cos_t**2)
+            x_next = np.empty_like(x)
+            x_next_flat = x_next.ravel()
 
-            term_grav = (M + m) * g * sin_t
-            term_coupled = -cos_t * (force + m * l * theta_dot**2 * sin_t)
-            term_fric = -(M + m) * b * theta_dot / (m * l)
-            theta_ddot = (term_grav + term_coupled + term_fric) / (l * denom)
-
-            term3 = force + m * l * theta_dot**2 * sin_t
-            term4 = -m * g * sin_t * cos_t
-            x_ddot = (term3 + term4) / denom
-
-            x_next = x.copy()
-            x_next[0] += x_dot * dt
-            x_next[1] += x_ddot * dt
-            x_next[2] += theta_dot * dt
-            x_next[3] += theta_ddot * dt
+            x_next_flat[0] = x_flat[0] + x_flat[1] * dt
+            x_next_flat[1] = x_flat[1] + x_ddot * dt
+            x_next_flat[2] = x_flat[2] + x_flat[3] * dt
+            x_next_flat[3] = x_flat[3] + theta_ddot * dt
 
             return x_next
 
-        return mpc_dynamics
+        @njit(cache=True)
+        def mpc_dynamics_complex(x, u, dt):
+            u_arr = np.atleast_1d(u)
+            force = u_arr.flat[0]
+            x_flat = x.ravel()
+
+            x_aug = np.zeros(6, dtype=np.complex128)
+            x_aug[:4] = x_flat
+            x_aug[4] = log_m
+            x_aug[5] = log_l
+
+            _, x_ddot, _, theta_ddot = _pendulum_param_step(x_aug, force, M, b, g)
+
+            x_next = np.empty_like(x)
+            x_next_flat = x_next.ravel()
+
+            x_next_flat[0] = x_flat[0] + x_flat[1] * dt
+            x_next_flat[1] = x_flat[1] + x_ddot * dt
+            x_next_flat[2] = x_flat[2] + x_flat[3] * dt
+            x_next_flat[3] = x_flat[3] + theta_ddot * dt
+
+            return x_next
+
+        def mpc_dynamics_dispatcher(x, u, dt):
+            if np.iscomplexobj(x) or np.iscomplexobj(u):
+                return mpc_dynamics_complex(x, u, dt)
+            return mpc_dynamics_fast(x, u, dt)
+
+        return mpc_dynamics_dispatcher
 
 
 class LQRLoopTransferFunction:

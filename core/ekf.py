@@ -45,16 +45,24 @@ class ExtendedKalmanFilter:
         """
         n_in = x.shape[0]
 
+        if self._I_complex.shape[0] != n_in:
+            self._I_complex = np.eye(n_in, dtype=complex)
+
         x_complex = x.astype(complex)
         X_perturb = x_complex + 1j * epsilon * self._I_complex
 
         try:
-            if u is not None:
-                raise TypeError("Vectorization fallback")
-            else:
-                Y_perturb = func(X_perturb)
+            try:
+                if u is not None:
+                    Y_perturb = func(X_perturb, u)
+                else:
+                    Y_perturb = func(X_perturb)
+
                 J = Y_perturb.imag / epsilon
                 return J
+
+            except Exception:
+                pass
 
         except (TypeError, ValueError, AttributeError):
             x_perturb = x_complex.copy()
@@ -101,7 +109,7 @@ class ExtendedKalmanFilter:
         """
         H = self.compute_jacobian(lambda x: self.h(x), self.x_hat, u=None)
 
-        y_pred = self.h(self.x_hat).real
+        y_pred = self.h(self.x_pred).real
         y_err = y_meas - y_pred
 
         S = H @ self.P @ H.T + self.R

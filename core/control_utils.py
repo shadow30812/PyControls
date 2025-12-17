@@ -22,14 +22,24 @@ def solve_discrete_riccati(A, B, Q, R, tol=1e-8, max_iter=1000):
     Returns:
         np.ndarray: The solution matrix P.
     """
+    A = np.asarray(A, dtype=float)
+    B = np.asarray(B, dtype=float)
+    Q = np.asarray(Q, dtype=float)
+    R = np.asarray(R, dtype=float)
+
     P = Q.copy()
 
     for _ in range(max_iter):
-        P_next = (
-            A.T @ P @ A - A.T @ P @ B @ np.linalg.inv(R + B.T @ P @ B) @ B.T @ P @ A + Q
-        )
+        BT_P = B.T @ P
+        S = R + BT_P @ B
+
+        K = np.linalg.solve(S, BT_P @ A)
+        P_next = A.T @ P @ A - A.T @ P @ B @ K + Q
+
+        P_next = 0.5 * (P_next + P_next.T)
 
         if np.max(np.abs(P_next - P)) < tol:
+            P = P_next
             break
 
         P = P_next
@@ -55,8 +65,84 @@ def dlqr(A, B, Q, R):
         np.ndarray: The optimal gain matrix K.
     """
     P = solve_discrete_riccati(A, B, Q, R)
-    K = np.linalg.inv(R + B.T @ P @ B) @ (B.T @ P @ A)
-    return K
+    BT_P = B.T @ P
+    return np.linalg.solve(R + BT_P @ B, BT_P @ A)
+
+
+class Check:
+    def _matrix_rank(self, M, atol=1e-15, rtol=None):
+        """
+        Computes the rank of a matrix using SVD with hybrid tolerance.
+
+        Rank is the number of singular values greater than the tolerance threshold.
+        Threshold = max(atol, rtol * sigma_max)
+        """
+        M = np.asarray(M, dtype=float)
+        if M.size == 0:
+            return 0
+
+        s = np.linalg.svd(M, compute_uv=False)
+
+        if atol is None:
+            atol = max(M.shape)
+
+        if rtol is None:
+            rtol = max(M.shape) * np.finfo(M.dtype).eps
+
+        threshold = max(atol, rtol * s[0])
+        return int(np.sum(s > threshold))
+
+    def controllability_matrix(self, A, B):
+        """
+        Constructs the controllability matrix [B, AB, A^2B, ..., A^{n-1}B].
+        """
+        A = np.asarray(A, dtype=float)
+        B = np.asarray(B, dtype=float)
+
+        n = A.shape[0]
+        mats = [B]
+
+        Ak = np.eye(n)
+        for _ in range(1, n):
+            Ak = Ak @ A
+            mats.append(Ak @ B)
+
+        return np.concatenate(mats, axis=1)
+
+    def observability_matrix(self, A, C):
+        """
+        Constructs the observability matrix [C; CA; CA^2; ...; CA^{n-1}].
+        """
+        A = np.asarray(A, dtype=float)
+        C = np.asarray(C, dtype=float)
+
+        n = A.shape[0]
+        mats = [C]
+
+        Ak = np.eye(n)
+        for _ in range(1, n):
+            Ak = Ak @ A
+            mats.append(C @ Ak)
+
+        return np.concatenate(mats, axis=0)
+
+    def is_controllable(self, A, B, atol=1e-15, rtol=None):
+        """
+        Checks controllability via rank of controllability matrix.
+        """
+        Ctrb = self.controllability_matrix(A, B)
+        n = A.shape[0]
+        rank = self._matrix_rank(Ctrb, atol=atol, rtol=rtol)
+        return rank == n
+
+    def is_observable(self, A, C, atol=1e-15, rtol=None):
+        """
+        Checks observability via rank of observability matrix.
+        """
+        Obsv = self.observability_matrix(A, C)
+        n = A.shape[0]
+        rank = self._matrix_rank(Obsv, atol=atol, rtol=rtol)
+        return rank == n
 
 
 class PIDController:
@@ -96,9 +182,10 @@ class PIDController:
         self.Kp = float(Kp)
         self.Ki = float(Ki)
         self.Kd = float(Kd)
+
         self.derivative_on_measurement = derivative_on_measurement
         self.min_out, self.max_out = output_limits
-        self.tau = tau
+        self.tau = float(tau)
 
         self.reset()
 
@@ -152,9 +239,9 @@ class PIDController:
         self.prev_derivative = derivative
 
         u = (
-            (self.Kp * error)
-            + (self.Ki * self.integral_error)
-            + (sign * self.Kd * derivative)
+            self.Kp * error
+            + self.Ki * self.integral_error
+            + sign * self.Kd * derivative
         )
 
         if self.min_out is not None:

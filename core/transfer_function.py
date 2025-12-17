@@ -1,5 +1,18 @@
 import numpy as np
 
+try:
+    from numba import njit
+
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
+
+    def njit(*args, **kwargs):
+        def decorator(func):
+            return func
+
+        return decorator
+
 
 class TransferFunction:
     """
@@ -27,14 +40,17 @@ class TransferFunction:
 
     def bode_response(self, omega_range):
         """Calculates Magnitude (dB) and Phase (deg) over a frequency range."""
-        mags = []
-        phases = []
-        for w in omega_range:
+        omega = np.asarray(omega_range)
+        mags = np.empty_like(omega, dtype=float)
+        phases = np.empty_like(omega, dtype=float)
+
+        for k, w in enumerate(omega):
             s = 1j * w
             resp = self.evaluate(s)
-            mags.append(20 * np.log10(np.abs(resp)))
-            phases.append(np.degrees(np.angle(resp)))
-        return np.array(mags), np.array(phases)
+            mags[k] = 20.0 * np.log10(np.abs(resp))
+            phases[k] = np.degrees(np.angle(resp))
+
+        return mags, phases
 
     def to_state_space(self):
         """
@@ -43,9 +59,9 @@ class TransferFunction:
         Returns:
             tuple: (A, B, C, D) matrices.
         """
-        norm_factor = self.den[0]
-        a = self.den / norm_factor
-        b = self.num / norm_factor
+        norm = self.den[0]
+        a = self.den / norm
+        b = self.num / norm
 
         n = len(a) - 1
         if len(b) < len(a):

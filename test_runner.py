@@ -9,7 +9,7 @@ def run_tests():
     start_dir = "tests"
     suite = loader.discover(start_dir)
 
-    runner = unittest.TextTestRunner()
+    runner = unittest.TextTestRunner(buffer=True)
     runner.run(suite)
 
 

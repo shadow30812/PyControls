@@ -278,11 +278,49 @@ Performance metrics enable objective comparison of competing control designs.
 ```
 PyControls/
 ├── core/
+│   ├── __init__.py
+│   ├── analysis.py
+│   ├── control_utils.py
+│   ├── ekf.py
+│   ├── estimator.py
+│   ├── exceptions.py
+│   ├── math_utils.py
+│   ├── mpc.py
+│   ├── solver.py
+│   ├── state_space.py
+│   ├── transfer_function.py
+│   └── ukf.py
 ├── modules/
+│   ├── __init__.py
+│   ├── interactive_lab.py
+│   └── physics_engine.py
 ├── systems/
+│   ├── __init__.py
+│   ├── dc_motor.py
+│   └── pendulum.py
 ├── tests/
+│   ├── test_analysis.py
+│   ├── test_control.py
+│   ├── test_core_models.py
+│   ├── test_estimators.py
+│   ├── test_jit_vec.py
+│   ├── test_math.py
+│   ├── test_modules.py
+│   ├── test_mpc.py
+│   ├── test_solvers.py
+│   └── test_systems.py
+├── .gitignore
+├── Complexity Analysis.md
+├── Equations and Formulae.md
+├── MIT License.txt
+├── README.md
+├── config.py
+├── exit.py
+├── main.py
 ├── pyproject.toml
-└── README.md
+├── requirements.txt
+├── system_registry.py
+└── test_runner.py
 ```
 
 ---
@@ -368,4 +406,4 @@ PyControls is inspired by classical control theory texts and the open-source sci
 ---
 
 Version: 2.0.0<br>
-Last Updated: 16 December
+Last Updated: 16 December 2025

@@ -5,6 +5,47 @@ from core.solver import manual_matrix_exp
 from core.state_space import StateSpace
 from core.transfer_function import TransferFunction
 
+try:
+    from numba import njit
+
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
+
+    def njit(*args, **kwargs):
+        def decorator(func):
+            return func
+
+        return decorator
+
+
+@njit(cache=True)
+def _dc_motor_linear_matrices(J, b, K, R, L):
+    A = np.array(
+        [[-b / J, K / J], [-K / L, -R / L]],
+        dtype=np.float64,
+    )
+
+    B = np.array(
+        [[0.0, -1.0 / J], [1.0 / L, 0.0]],
+        dtype=np.float64,
+    )
+    return A, B
+
+
+@njit(cache=True)
+def _motor_param_estimation_step(x, voltage, K, R, L):
+    omega = x[0]
+    i = x[1]
+
+    J_est = np.exp(x[2])
+    b_est = np.exp(x[3])
+
+    dw_dt = (K * i - b_est * omega) / J_est
+    di_dt = (voltage - R * i - K * omega) / L
+
+    return dw_dt, di_dt
+
 
 class DCMotor:
     """
@@ -166,8 +207,7 @@ class DCMotor:
         """
         J, b, K, R, L = self.params.values()
 
-        A = [[-b / J, K / J], [-K / L, -R / L]]
-        B = [[0, -1 / J], [1 / L, 0]]
+        A, B = _dc_motor_linear_matrices(J, b, K, R, L)
 
         C = np.eye(2)
         D = np.zeros((2, 2))
@@ -190,20 +230,16 @@ class DCMotor:
         """
         J, b, K, R, L = self.params.values()
 
-        A_std = np.array([[-b / J, K / J], [-K / L, -R / L]])
+        A_std, _ = _dc_motor_linear_matrices(J, b, K, R, L)
+        B_dist = np.array([[-1.0 / J], [0.0]])
 
-        B_dist_effect = np.array([[-1 / J], [0]])
-
-        top = np.hstack((A_std, B_dist_effect))
-        bottom = np.array([[0, 0, 0]])
-        A_aug = np.vstack((top, bottom))
-
-        B_aug = np.array([[0], [1 / L], [0]])
+        A_aug = np.vstack((np.hstack((A_std, B_dist)), [[0.0, 0.0, 0.0]]))
+        B_aug = np.array([[0.0], [1.0 / L], [0.0]])
 
         C_aug = np.array(
             [
-                [1, 0, 0],
-                [0, 1, 0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
             ]
         )
 
@@ -226,11 +262,6 @@ class DCMotor:
         _, _, K, R, L = self.params.values()
 
         def motor_dynamics_4_state(x, u):
-            omega = x[0]
-            i = x[1]
-            J_est = np.exp(x[2])
-            b_est = np.exp(x[3])
-
             if hasattr(u, "ndim") and u.ndim == 2:
                 voltage = u[0, 0]
             elif hasattr(u, "__len__"):
@@ -238,13 +269,11 @@ class DCMotor:
             else:
                 voltage = u
 
-            dw_dt = (K * i - b_est * omega) / J_est
-            di_dt = (voltage - R * i - K * omega) / L
+            dw_dt, di_dt = _motor_param_estimation_step(x, voltage, K, R, L)
 
-            dJ_dt = np.zeros_like(omega)
-            db_dt = np.zeros_like(omega)
+            zeros = np.zeros_like(dw_dt)
+            result = np.array([dw_dt, di_dt, zeros, zeros])
 
-            result = np.array([dw_dt, di_dt, dJ_dt, db_dt])
             if result.ndim == 1:
                 return result.reshape(-1, 1)
             return result
@@ -293,10 +322,10 @@ class DCMotor:
             else:
                 domega = (T_motor - T_friction) / J
 
-            di = (voltage - R * current - K * omega) / L
+            di_dt = (voltage - R * current - K * omega) / L
 
             omega_next = omega + domega * dt
-            current_next = current + di * dt
+            current_next = current + di_dt * dt
 
             return np.array([omega_next, current_next])
 
@@ -325,8 +354,8 @@ class DCMotor:
             tuple: (A_d, B_d_voltage) numpy arrays.
         """
         ss = self.get_state_space()
-        A = np.array(ss.A)
-        B = np.array(ss.B)
+        A = np.asarray(ss.A)
+        B = np.asarray(ss.B)
 
         n_states = A.shape[0]
         n_inputs = B.shape[1]

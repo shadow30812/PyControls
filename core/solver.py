@@ -3,20 +3,20 @@ import numpy as np
 from config import SOLVER_PARAMS
 
 try:
-    from numba import jit
+    from numba import njit
 
     NUMBA_AVAILABLE = True
 except ImportError:
     NUMBA_AVAILABLE = False
 
-    def jit(*args, **kwargs):
+    def njit(*args, **kwargs):
         def decorator(func):
             return func
 
         return decorator
 
 
-@jit(nopython=True, cache=True)
+@njit(cache=True, fastmath=True)
 def _mat_mul(A, B):
     """
     Manual matrix multiplication to avoid Numba requiring SciPy/BLAS.
@@ -36,7 +36,7 @@ def _mat_mul(A, B):
     return C
 
 
-@jit(nopython=True, cache=True)
+@njit(cache=True)
 def manual_matrix_exp(A, order=SOLVER_PARAMS["matrix_exp_order"]):
     """
     Computes the matrix exponential e^A using Scaling and Squaring with Taylor Series.
@@ -45,8 +45,12 @@ def manual_matrix_exp(A, order=SOLVER_PARAMS["matrix_exp_order"]):
     Optimized with Numba JIT compilation. Uses manual matrix multiplication
     to maintain independence from scipy/blas.
     """
-    norm_A = 0.0
     rows, cols = A.shape
+
+    if rows == 1:
+        return np.array([[np.exp(A[0, 0])]])
+
+    norm_A = 0.0
     for i in range(rows):
         row_sum = 0.0
         for j in range(cols):
@@ -56,18 +60,18 @@ def manual_matrix_exp(A, order=SOLVER_PARAMS["matrix_exp_order"]):
 
     s = 0
     while norm_A > 0.5:
-        norm_A /= 2.0
+        norm_A *= 0.5
         s += 1
 
-    A_scaled = A / (2**s)
+    inv_scale = 1.0 / (2.0**s)
+    A_scaled = A * inv_scale
 
     E = np.eye(rows)
     term = np.eye(rows)
 
     for k in range(1, order + 1):
-        term = _mat_mul(term, A_scaled)
-        term = term / k
-        E = E + term
+        term = _mat_mul(term, A_scaled) / k
+        E += term
 
     for _ in range(s):
         E = _mat_mul(E, E)
@@ -105,7 +109,8 @@ class ExactSolver:
         """
         Advances the simulation by one discrete time step.
         """
-        u = np.array(u_input, dtype=float)
+        u = np.asarray(u_input, dtype=float)
+
         if u.ndim == 0:
             u = u.reshape(1, 1)
         elif u.ndim == 1:
@@ -119,13 +124,23 @@ class ExactSolver:
         return y.flatten()
 
     def reset(self):
-        self.x = np.zeros_like(self.x)
+        self.x[:] = 0.0
+
+
+@njit(cache=True)
+def _rk_error_norm(x5, x4):
+    err = 0.0
+    for i in range(x5.size):
+        diff = abs(x5.flat[i] - x4.flat[i])
+        if diff > err:
+            err = diff
+    return err
 
 
 class NonlinearSolver:
     """
     Adaptive Step-Size Solver for Non-Linear Systems.
-    Implements the Dormand-Prince (RK5(4)) method.
+    Implements the Dormand-Prince (RK5(4)7M) method.
     """
 
     def __init__(
@@ -183,11 +198,11 @@ class NonlinearSolver:
         Solves the IVP from t=0 to t_end using vectorized operations.
         """
         t = 0.0
-        x = x0.astype(float)
+        x = np.asarray(x0, dtype=float).flatten()
         dt = SOLVER_PARAMS["adaptive_initial_dt"]
 
         t_hist = [t]
-        x_hist = [x]
+        x_hist = [x.copy()]
 
         k = np.zeros((7, x.shape[0]))
 
@@ -197,10 +212,14 @@ class NonlinearSolver:
 
             u_val = u_func(t) if u_func else 0.0
 
-            k[0] = self.f(t, x, u_val).flatten()
+            try:
+                k[0] = self.f(t, x[:, None], u_val).flatten()
+            except Exception:
+                k[0] = self.f(t, x, u_val).flatten()
 
             for i in range(1, 7):
-                dx_sum = self.A_tableau[i, :i] @ k[:i]
+                A_tab = self.A_tableau
+                dx_sum = A_tab[i, :i] @ k[:i]
                 t_inner = t + self.c[i] * dt
                 u_inner = u_func(t_inner) if u_func else 0.0
                 k[i] = self.f(t_inner, x + dt * dx_sum, u_inner).flatten()
@@ -208,23 +227,21 @@ class NonlinearSolver:
             x_5 = x + dt * (self.b @ k)
             x_4 = x + dt * (self.b_hat @ k)
 
-            error = np.max(np.abs(x_5 - x_4))
+            error = _rk_error_norm(x_5, x_4)
 
             if error < self.tol or dt <= self.dt_min:
                 t += dt
                 x = x_5
                 t_hist.append(t)
-                x_hist.append(x)
+                x_hist.append(x.copy())
 
-            if error == 0:
-                dt_new = dt * 2
+            if error == 0.0:
+                dt *= 2.0
             else:
-                dt_new = (
+                dt *= (
                     SOLVER_PARAMS["safety_factor_1"]
-                    * dt
                     * (self.tol / error) ** SOLVER_PARAMS["safety_factor_2"]
                 )
 
-            dt = max(self.dt_min, min(dt_new, self.dt_max))
-
+            dt = min(max(dt, self.dt_min), self.dt_max)
         return np.array(t_hist), np.array(x_hist)

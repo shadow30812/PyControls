@@ -169,7 +169,8 @@ INTERACTIVE_LAB_PARAMS = {
 MPC_SOLVER_PARAMS = {
     "rho": 1.0,
     "finite_diff_eps": 1e-5,
-    "ilqr_reg": 1e-6,
+    "ilqr_reg": 1.0,
+    "ilqr_alphas": [1.0, 0.5, 0.25, 0.1],
     "default_linear_iters": 50,
     "default_nonlinear_iters": 10,
 }

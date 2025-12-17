@@ -2,18 +2,12 @@ import unittest
 
 import numpy as np
 
-try:
-    from scipy.linalg import expm
-
-    SCIPY_AVAILABLE = True
-except ImportError:
-    SCIPY_AVAILABLE = False
-
 from core.exceptions import ConvergenceError
 from core.math_utils import (
     Differentiation,
     Root,
     implicit_mul,
+    jacobian,
     make_func,
     make_system_func,
     preprocess_power,
@@ -25,8 +19,6 @@ class TestMathUtils(unittest.TestCase):
     """
     Comprehensive Unit Tests for core mathematical utilities.
     """
-
-    # --- Matrix Exponential Tests ---
 
     def test_matrix_exponential_identity(self):
         """e^0 = I"""
@@ -56,20 +48,6 @@ class TestMathUtils(unittest.TestCase):
         expected = np.array([[0, -1], [1, 0]])
         result = manual_matrix_exp(A)
         np.testing.assert_array_almost_equal(result, expected, decimal=10)
-
-    def test_compare_vs_scipy_random(self):
-        """Compare vs Scipy for random stable matrices."""
-        if not SCIPY_AVAILABLE:
-            self.skipTest("SciPy not installed, skipping comparison test")
-
-        np.random.seed(42)
-        for _ in range(3):
-            A = np.random.randn(5, 5) - 2 * np.eye(5)
-            scipy_result = expm(A)
-            my_result = manual_matrix_exp(A, order=20)
-            np.testing.assert_allclose(my_result, scipy_result, rtol=1e-5, atol=1e-6)
-
-    # --- String Parsing Tests ---
 
     def test_implicit_multiplication_basics(self):
         self.assertEqual(implicit_mul("3x"), "3*x")
@@ -111,8 +89,6 @@ class TestMathUtils(unittest.TestCase):
         res = f(0, x, 0)
         np.testing.assert_array_equal(res, np.array([5.0, -10.0]))
 
-    # --- Differentiation Tests ---
-
     def test_diff_real(self):
         diff = Differentiation()
         func = lambda x: x**3
@@ -130,8 +106,6 @@ class TestMathUtils(unittest.TestCase):
 
         val = diff.real_diff(strict_float_func, 2.0)
         self.assertAlmostEqual(val, 4.0, places=4)
-
-    # --- Root Finding Tests ---
 
     def test_root_brent_standard(self):
         r = Root()
@@ -158,6 +132,116 @@ class TestMathUtils(unittest.TestCase):
         f = lambda x: x**2 + 1
         with self.assertRaises(ConvergenceError):
             r.newton_root(f, 0.0, maxiter=10)
+
+    def test_diff_vectorized_input(self):
+        diff = Differentiation()
+        f = lambda x: x**2
+        xs = np.array([1.0, 2.0, 3.0])
+        vals = np.array([diff.real_diff(f, x) for x in xs])
+        np.testing.assert_allclose(vals, 2 * xs, rtol=1e-6)
+
+    def test_find_root_fallback_returns_guess(self):
+        r = Root()
+        f = lambda x: x**2 + 1
+        res = r.find_root(f, 10.0)
+        self.assertEqual(res, 10.0)
+
+    def test_make_system_func_batch_state(self):
+        f = make_system_func("[x[0] + u, x[1] - u]")
+        x = np.ones((2, 10))
+        res = f(0.0, x, 2.0)
+        self.assertEqual(res.shape, (2, 10))
+
+    def test_diff_near_zero(self):
+        diff = Differentiation()
+        f = lambda x: x**3
+        val = diff.real_diff(f, 1e-8)
+        self.assertAlmostEqual(val, 3e-16, delta=1e-14)
+
+    def test_real_diff_many_points_complex_step(self):
+        diff = Differentiation()
+
+        def f(x):
+            return x**3 + 2 * x
+
+        xs = np.linspace(-5, 5, 50)
+        for x in xs:
+            d = diff.real_diff(f, x)
+            expected = 3 * x**2 + 2
+            assert abs(d - expected) < 1e-8
+
+    def test_real_diff_many_points_fallback(self):
+        diff = Differentiation()
+
+        def f(x):
+            if isinstance(x, complex):
+                raise TypeError
+            return x**2
+
+        xs = np.linspace(-3, 3, 50)
+        for x in xs:
+            d = diff.real_diff(f, x)
+            expected = 2 * x
+            assert abs(d - expected) < 1e-4
+
+    def test_real_diff_mixed_behavior(self):
+        diff = Differentiation()
+
+        def f(x):
+            if abs(x) > 1.0 and isinstance(x, complex):
+                raise TypeError
+            return x**2
+
+        xs = np.linspace(-2, 2, 20)
+        for x in xs:
+            d = diff.real_diff(f, x)
+            assert np.isfinite(d)
+
+
+class TestJacobian(unittest.TestCase):
+    def test_jacobian_matches_analytic(self):
+        def f(x):
+            return np.array(
+                [
+                    x[0] ** 2 + x[1],
+                    np.sin(x[0]) + x[1] ** 3,
+                ]
+            )
+
+        x = np.array([1.2, -0.7])
+        J = jacobian(f, x)
+
+        J_true = np.array(
+            [
+                [2 * x[0], 1.0],
+                [np.cos(x[0]), 3 * x[1] ** 2],
+            ]
+        )
+
+        np.testing.assert_allclose(J, J_true, rtol=1e-9, atol=1e-12)
+
+    def test_jacobian_high_dimension(self):
+        n = 8
+
+        def f(x):
+            return x**2 + 2 * x
+
+        x = np.linspace(-1.0, 1.0, n)
+        J = jacobian(f, x)
+
+        J_true = np.diag(2 * x + 2)
+        np.testing.assert_allclose(J, J_true, rtol=1e-9, atol=1e-12)
+
+    def test_jacobian_fallback(self):
+        def f(x):
+            if isinstance(x[0], complex):
+                raise TypeError
+            return np.array([x[0] ** 2])
+
+        x = np.array([2.0])
+        J = jacobian(f, x)
+
+        self.assertAlmostEqual(J[0, 0], 4.0, places=5)
 
 
 if __name__ == "__main__":

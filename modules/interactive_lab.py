@@ -71,16 +71,20 @@ class InteractiveLab:
         self.status = "RUNNING"
         self.failure_reason = None
 
-        if self.descriptor.system_id == "dc_motor":
+        sid = self.descriptor.system_id
+
+        if sid == "dc_motor":
             self.state = np.array([0.0, 0.0], dtype=float)
             self.omega_ref = self.params.get("omega_ref", 1.0)
             self.omega_tol = self.params.get("omega_tol", 0.05)
             self.success_time_required = 3.0
+            self._dynamics = dc_motor_dynamics
 
-        elif self.descriptor.system_id == "pendulum":
+        elif sid == "pendulum":
             self.state = np.array([0.0, 0.0, 0.05, 0.0], dtype=float)
             self.theta_limit = self.params.get("theta_limit", 0.5)
             self.success_time_required = 5.0
+            self._dynamics = pendulum_dynamics
 
         else:
             raise NotImplementedError(
@@ -106,34 +110,20 @@ class InteractiveLab:
         Returns:
             np.ndarray: The updated state vector.
         """
-        if self.time >= self.max_time:
-            self.status = "FAILED"
-            self.failure_reason = "Time limit reached"
-            return self.state
-
-        if self.control_mode == "MANUAL":
-            self.handle_keyboard_input()
-
         if self.status in ("SUCCESS", "FAILED"):
             return self.state
 
         if not self.running:
             raise RuntimeError("InteractiveLab.step() called before initialize().")
 
+        if self.control_mode == "MANUAL":
+            self.handle_keyboard_input()
+
         u = self.get_control_input()
         self.last_u = u
 
-        if self.descriptor.system_id == "dc_motor":
-            dynamics = dc_motor_dynamics
-        elif self.descriptor.system_id == "pendulum":
-            dynamics = pendulum_dynamics
-        else:
-            raise NotImplementedError(
-                f"Step not implemented for {self.descriptor.system_id}"
-            )
-
         self.state = rk4_fixed_step(
-            dynamics,
+            self._dynamics,
             self.state,
             u,
             self.dt,
@@ -142,10 +132,11 @@ class InteractiveLab:
         )
 
         if self.use_estimator and self.estimator is not None:
-            if self.measurement_func is not None:
-                y = self.measurement_func(self.state).reshape(-1, 1)
-            else:
-                y = self.state.copy().reshape(-1, 1)
+            y = (
+                self.measurement_func(self.state)
+                if self.measurement_func
+                else self.state
+            ).reshape(-1, 1)
             self.estimator.predict(self.last_u, self.dt)
             self.estimator.update(y)
             self.state_est = self.estimator.x_hat.flatten()
@@ -154,10 +145,6 @@ class InteractiveLab:
 
         self.time += self.dt
         self.evaluate_rules()
-
-        if self.status == "SUCCESS" and self.control_mode == "AUTO":
-            self.running = False
-
         return self.state
 
     def reset(self):
