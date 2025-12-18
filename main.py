@@ -44,10 +44,12 @@ def load_available_systems():
             module = importlib.import_module(module_name)
             for member_name, member_obj in inspect.getmembers(module, inspect.isclass):
                 if (
-                    hasattr(member_obj, "get_closed_loop_tf")
-                    and hasattr(member_obj, "get_disturbance_tf")
-                    and member_obj.__module__ == module_name
-                ):
+                    (
+                        hasattr(member_obj, "get_closed_loop_tf")
+                        and hasattr(member_obj, "get_disturbance_tf")
+                    )
+                    or member_name == "Thermistor"
+                ) and member_obj.__module__ == module_name:
                     systems[member_name] = member_obj
 
         except Exception as e:
@@ -98,6 +100,10 @@ class PyControlsApp:
             config, "PENDULUM_PARAMS"
         ):
             self.active_params.update(config.PENDULUM_PARAMS)
+        elif self.current_system_id == "thermistor" and hasattr(
+            config, "THERMISTOR_PARAMS"
+        ):
+            self.active_params.update(config.THERMISTOR_PARAMS)
 
         self.system = (
             self.current_descriptor.system_class()
@@ -155,7 +161,7 @@ class PyControlsApp:
             print("[6] Run Parameter Estimation Demo (EKF)")
             print("[7] Run Nonlinear State Est. Demo (UKF)")
             print("[8] Run Model Predictive Control Demo (MPC)")
-            print("[9] Interactive Lab")
+            print("[9] Interactive Lab (Supports Hardware HIL)")
             print("[10] Run Custom Non-Linear Simulation")
             print("[q] Exit")
 
@@ -458,8 +464,12 @@ class PyControlsApp:
            - Pendulum: Theta vs Theta_dot.
            - Motor: Speed vs Current.
         """
-        print(f"\nGenerating Analysis for {self.system_name}...")
+        if not self.current_descriptor.supports_analysis:
+            print("\nAnalysis & metrics are only available for linear systems.")
+            input("Press Enter to return to menu...")
+            return
 
+        print(f"\nGenerating Analysis for {self.system_name}...")
         try:
             current_system = self.SystemClass(**self.active_params)
             ss = current_system.get_state_space()
@@ -661,6 +671,10 @@ class PyControlsApp:
                             config, "PENDULUM_PARAMS"
                         ):
                             self.active_params.update(config.PENDULUM_PARAMS)
+                        elif new_id == "thermistor" and hasattr(
+                            config, "THERMISTOR_PARAMS"
+                        ):
+                            self.active_params.update(config.THERMISTOR_PARAMS)
 
                         self.system.params = self.active_params.copy()
                     else:
@@ -1142,7 +1156,7 @@ class PyControlsApp:
 
             lab.set_auto_controller(controller_wrapper)
 
-        if self.current_system_id == "pendulum":
+        elif self.current_system_id == "pendulum":
             current_sys_instance = self.SystemClass(**self.active_params)
 
             if hasattr(current_sys_instance, "dlqr_gain"):
@@ -1189,7 +1203,6 @@ class PyControlsApp:
             while lab.running and lab.status == "RUNNING":
                 lab.step()
                 lab.update_visualization()
-                time.sleep(lab.dt)
 
                 actual_u = lab.last_u
 
@@ -1206,6 +1219,12 @@ class PyControlsApp:
                         f"\rθ={theta:.3f}, x={x_pos:.3f}, u={actual_u:.2f}",
                         end="",
                     )
+                elif lab.descriptor.system_id == "thermistor":
+                    T = lab.state[0]
+                    u = actual_u
+                    print(f"\rT={T:.2f}°C, u={u:.0f}/255", end="")
+
+                time.sleep(lab.dt if not lab.descriptor.is_hardware else lab.dt * 2)
 
             plt.ioff()
             plt.show()

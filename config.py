@@ -25,6 +25,24 @@ PENDULUM_PARAMS = {
     "theta_limit": 0.5,
 }
 
+# --- NEW THERMISTOR HIL CONFIGURATION ---
+THERMISTOR_PARAMS = {
+    "port": "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0",  # USB(n)
+    "baud": 115200,
+    "R_divider": 10000.0,  # 10k fixed resistor
+    "Beta": 3950.0,  # Thermistor Beta constant
+    "R0": 10000.0,  # Resistance at 25C
+    "T0": 298.15,  # 25C in Kelvin
+    "setpoint": 45.0,  # Target temperature in Celsius
+}
+
+THERMISTOR_PID = {
+    "Kp": 20.0,
+    "Ki": 1.5,
+    "Kd": 5.0,
+    "output_limits": (0, 255),
+    "integral_limits": (-50, 50),  # Anti-windup clamp per project spec
+}
 
 SIM_PARAMS = {
     "dt": 0.001,

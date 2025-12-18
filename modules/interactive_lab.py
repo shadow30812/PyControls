@@ -4,6 +4,8 @@ import sys
 import matplotlib.pyplot as plt
 import numpy as np
 
+import config
+from core.control_utils import PIDController
 from modules.physics_engine import (
     dc_motor_dynamics,
     pendulum_dynamics,
@@ -86,6 +88,24 @@ class InteractiveLab:
             self.success_time_required = 5.0
             self._dynamics = pendulum_dynamics
 
+        elif sid == "thermistor":
+            self.system_instance = self.descriptor.system_class(**self.params)
+            self.system_instance.connect()
+            self.state = np.array([25.0])
+            cfg = config.THERMISTOR_PID
+            hil_pid = PIDController(
+                Kp=cfg["Kp"],
+                Ki=cfg["Ki"],
+                Kd=cfg["Kd"],
+                derivative_on_measurement=False,
+                output_limits=cfg["output_limits"],
+                integral_limits=cfg["integral_limits"],
+            )
+            self.set_auto_controller(
+                lambda s, t: hil_pid.update(s[0], self.params["setpoint"], self.dt)
+            )
+            self.control_mode = "AUTO"
+
         else:
             raise NotImplementedError(
                 f"Interactive lab not implemented for {self.descriptor.system_id}"
@@ -122,14 +142,18 @@ class InteractiveLab:
         u = self.get_control_input()
         self.last_u = u
 
-        self.state = rk4_fixed_step(
-            self._dynamics,
-            self.state,
-            u,
-            self.dt,
-            self.params,
-            disturbance,
-        )
+        if self.descriptor.is_hardware and self.descriptor.system_id == "thermistor":
+            self.system_instance.write_pwm(u)
+            self.state = np.array([self.system_instance.read_temp()])
+        else:
+            self.state = rk4_fixed_step(
+                self._dynamics,
+                self.state,
+                u,
+                self.dt,
+                self.params,
+                disturbance,
+            )
 
         if self.use_estimator and self.estimator is not None:
             y = (
@@ -150,7 +174,10 @@ class InteractiveLab:
     def reset(self):
         """
         Clears the current simulation state, stopping execution.
+        Also stops hardware circuit(s) connected to the program.
         """
+        if self.descriptor.system_id == "thermistor" and self.system_instance:
+            self.system_instance.close()
         self.state = None
         self.time = 0.0
         self.running = False
@@ -184,6 +211,15 @@ class InteractiveLab:
                 self.success_timer += self.dt
                 if self.success_timer >= self.success_time_required:
                     self.status = "SUCCESS"
+
+        elif self.descriptor.system_id == "thermistor":
+            temp = self.state[0]
+            if abs(temp - self.params["setpoint"]) <= 1.0:
+                self.success_timer += self.dt
+                if self.success_timer >= 5.0:
+                    self.status = "SUCCESS"
+            else:
+                self.success_timer = 0.0
 
     def get_control_input(self):
         """
@@ -270,12 +306,12 @@ class InteractiveLab:
         Sets up the Matplotlib figure for real-time plotting.
         """
         self.fig, self.ax = plt.subplots()
-        self.ax.axhline(0.0, color="k", linestyle="--")
 
         if self.descriptor.system_id == "dc_motor":
             self.ax.set_title("DC Motor Speed")
             self.ax.set_xlabel("Time (s)")
             self.ax.set_ylabel("ω (rad/s)")
+            self.ax.axhline(0.0, color="k", linestyle="--")
             self.times = []
             self.values = []
             (self.line,) = self.ax.plot([], [], lw=2)
@@ -284,9 +320,21 @@ class InteractiveLab:
             self.ax.set_title("Inverted Pendulum Angle")
             self.ax.set_xlabel("Time (s)")
             self.ax.set_ylabel("θ (rad)")
+            self.ax.axhline(0.0, color="k", linestyle="--")
             self.times = []
             self.values = []
             (self.line,) = self.ax.plot([], [], lw=2)
+
+        elif self.descriptor.system_id == "thermistor":
+            self.ax.set_title("HIL Temperature Control")
+            self.ax.set_ylabel("Temp (°C)")
+            self.ax.axhline(
+                self.params["setpoint"], color="g", ls="--", label="Setpoint"
+            )
+            self.ax.legend()
+            self.times = []
+            self.values = []
+            (self.line,) = self.ax.plot([], [], "b-")
 
         plt.ion()
         plt.show()
@@ -301,6 +349,8 @@ class InteractiveLab:
             self.values.append(self.state[0])
         elif self.descriptor.system_id == "pendulum":
             self.values.append(self.state[2])
+        elif self.descriptor.system_id == "thermistor":
+            self.values.append(self.state[0])
 
         self.line.set_data(self.times, self.values)
         self.ax.relim()

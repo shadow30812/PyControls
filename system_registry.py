@@ -1,5 +1,6 @@
 from systems.dc_motor import DCMotor
 from systems.pendulum import InvertedPendulum
+from systems.thermistor import Thermistor
 
 
 class SystemDescriptor:
@@ -14,6 +15,7 @@ class SystemDescriptor:
         supports_estimation,
         supports_mpc,
         supports_interactive_lab,
+        is_hardware=False,
     ):
         self.system_id = system_id
         self.display_name = display_name
@@ -24,6 +26,7 @@ class SystemDescriptor:
         self.supports_estimation = supports_estimation
         self.supports_mpc = supports_mpc
         self.supports_interactive_lab = supports_interactive_lab
+        self.is_hardware = is_hardware
 
 
 SYSTEM_REGISTRY = {
@@ -48,5 +51,17 @@ SYSTEM_REGISTRY = {
         supports_estimation=True,
         supports_mpc=True,
         supports_interactive_lab=True,
+    ),
+    "thermistor": SystemDescriptor(
+        system_id="thermistor",
+        display_name="Thermistor HIL Control",
+        system_class=Thermistor,
+        input_type="PWM",
+        state_labels=["Temp (°C)"],
+        supports_analysis=False,
+        supports_estimation=False,
+        supports_mpc=False,
+        supports_interactive_lab=True,
+        is_hardware=True,
     ),
 }

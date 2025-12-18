@@ -148,7 +148,7 @@ class Check:
 class PIDController:
     """
     A robust PID controller implementation with support for Derivative-on-Measurement
-    and Low-Pass Filtering for the derivative term.
+    and Low-Pass Filtering for the derivative term, and anti-Windup for the integral. 
 
     Features:
     - Derivative-on-Measurement: Calculates the D-term using the change in measurement
@@ -177,6 +177,7 @@ class PIDController:
         Kd,
         derivative_on_measurement=True,
         output_limits=(None, None),
+        integral_limits=(None, None),
         tau=0.02,
     ):
         self.Kp = float(Kp)
@@ -185,6 +186,8 @@ class PIDController:
 
         self.derivative_on_measurement = derivative_on_measurement
         self.min_out, self.max_out = output_limits
+        self.min_int, self.max_int = integral_limits
+
         self.tau = float(tau)
 
         self.reset()
@@ -224,6 +227,13 @@ class PIDController:
 
         error = setpoint - measurement
         self.integral_error += error * dt
+
+        new_integral = self.integral_error + (error * dt)
+        if self.min_int is not None:
+            new_integral = max(self.min_int, new_integral)
+        if self.max_int is not None:
+            new_integral = min(self.max_int, new_integral)
+        self.integral_error = new_integral
 
         if self.derivative_on_measurement:
             raw_derivative = (measurement - self.prev_value) / dt
