@@ -1,6 +1,6 @@
 import numpy as np
 
-from config import MPC_SOLVER_PARAMS
+from helpers.config import MPC_SOLVER_PARAMS
 
 
 class ModelPredictiveControl:

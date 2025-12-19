@@ -3,7 +3,8 @@ import time
 
 import numpy as np
 import serial
-from config import THERMISTOR_PARAMS
+
+from helpers.config import THERMISTOR_PARAMS
 
 
 class Thermistor:

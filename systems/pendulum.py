@@ -1,8 +1,8 @@
 import numpy as np
 
-from config import PENDULUM_LQR_PARAMS, PENDULUM_PARAMS
 from core.control_utils import dlqr
 from core.state_space import StateSpace
+from helpers.config import PENDULUM_LQR_PARAMS, PENDULUM_PARAMS
 from modules.physics_engine import pendulum_dynamics, rk4_fixed_step
 
 try:

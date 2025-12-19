@@ -1,9 +1,9 @@
 import numpy as np
 
-from config import DC_MOTOR_DEFAULTS, UKF_MOTOR_PARAMS
 from core.solver import manual_matrix_exp
 from core.state_space import StateSpace
 from core.transfer_function import TransferFunction
+from helpers.config import DC_MOTOR_DEFAULTS, UKF_MOTOR_PARAMS
 
 try:
     from numba import njit

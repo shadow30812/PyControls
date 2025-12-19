@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 sys.path.append(os.getcwd())
-import config
+import helpers.config as config
 from core.analysis import get_stability_margins, get_step_metrics
 from core.control_utils import PIDController
 from core.ekf import ExtendedKalmanFilter
@@ -18,10 +18,10 @@ from core.math_utils import make_system_func
 from core.mpc import ModelPredictiveControl
 from core.solver import ExactSolver, NonlinearSolver
 from core.ukf import UnscentedKalmanFilter
-from exit import flush, kill, stop
+from helpers.exit import flush, kill, stop
+from helpers.system_registry import SYSTEM_REGISTRY
 from modules.interactive_lab import InteractiveLab, pendulum_lqr_controller
 from modules.physics_engine import pendulum_dynamics, rk4_fixed_step
-from system_registry import SYSTEM_REGISTRY
 
 
 def load_available_systems():

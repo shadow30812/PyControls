@@ -1,6 +1,6 @@
 import numpy as np
 
-from config import SOLVER_PARAMS
+from helpers.config import SOLVER_PARAMS
 
 try:
     from numba import njit

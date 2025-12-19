@@ -4,7 +4,7 @@ import sys
 import matplotlib.pyplot as plt
 import numpy as np
 
-import config
+import helpers.config as config
 from core.control_utils import PIDController
 from modules.physics_engine import (
     dc_motor_dynamics,
