@@ -72,28 +72,18 @@ def _pendulum_ukf_step(theta, omega, g, l, b, m, dt):
 @njit(cache=True)
 def _param_est_wrapper(x, force, M, b, g):
     x_flat = x.ravel()
-    dx0, dx1, dx2, dx3 = _pendulum_param_step(x_flat, force, M, b, g)
-
-    res = np.zeros(6)
-    res[0] = dx0
-    res[1] = dx1
-    res[2] = dx2
-    res[3] = dx3
-
-    return res.reshape(-1, 1)
+    return _pendulum_param_step(x_flat, force, M, b, g)
 
 
 @njit(cache=True)
 def _param_est_batch(x, force, M, b, g):
     n_batch = x.shape[1]
-    res = np.zeros((6, n_batch))
+    res = np.zeros((4, n_batch), dtype=x.dtype)
 
     for i in range(n_batch):
         x_col = x[:, i]
         f = force[i]
-
         dx0, dx1, dx2, dx3 = _pendulum_param_step(x_col, f, M, b, g)
-
         res[0, i] = dx0
         res[1, i] = dx1
         res[2, i] = dx2
@@ -191,7 +181,9 @@ class InvertedPendulum:
                         f"Input u shape {u.shape} does not match state batch size {x.shape[1]}"
                     )
 
-                return _param_est_batch(x, u_arr, M, b, g)
+                derivs = _param_est_batch(x, u_arr, M, b, g)
+                zeros = np.zeros((2, x.shape[1]), dtype=x.dtype)
+                return np.vstack((derivs, zeros))
 
             if hasattr(u, "ndim") and u.ndim == 2:
                 force = u[0, 0]
@@ -199,7 +191,10 @@ class InvertedPendulum:
                 force = u[0]
             else:
                 force = u
-            return _param_est_wrapper(x, force, M, b, g)
+
+            dx0, dx1, dx2, dx3 = _param_est_wrapper(x, force, M, b, g)
+            z = np.zeros_like(dx0)
+            return np.array([dx0, dx1, dx2, dx3, z, z]).reshape(-1, 1)
 
         return pendulum_dynamics
 
