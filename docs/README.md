@@ -405,5 +405,5 @@ PyControls is inspired by classical control theory texts and the open-source sci
 
 ---
 
-Version: 2.0.0<br>
-Last Updated: 16 December 2025
+Version: 4.0.1  
+Last Updated: 21 December 2025
