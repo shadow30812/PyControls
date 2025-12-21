@@ -1,150 +1,241 @@
-# Technical Report: Hardware-in-the-Loop (HIL) Voltage Control of a PWM Inverter using Stochastic State Estimation
+# Estimation-Centered Control of a PWM-DAC Voltage Source Using Reduced-Order LQG Principles
 
-**Author:** Swastik Kumar Rout  
-**Date:** December 21, 2025  
-**Platform:** Python (PyControls), C++ (Firmware), Arduino Uno R3  
-**Subject:** Embedded Control Systems & Power Electronics  
-
----
-
-## 1. Executive Summary
-
-This project explores the design, implementation, and optimization of a closed-loop digital control system for a voltage-source inverter. Using a custom Hardware-in-the-Loop (HIL) architecture, the system regulates the output voltage of a PWM-driven 2N7000 MOSFET circuit.
-
-The primary engineering challenge was to stabilize a noisy, delay-constrained plant that exhibited significant environmental drift. By implementing a **Discrete-Time Kalman Filter** for state estimation and transitioning from a standard PID to an **Integral-Dominant PI controller**, the system achieved an industrial-grade steady-state precision of **$\pm 0.02\text{V}$** and a settling time of **$5.3\text{s}$**. This report documents the system identification process, stability boundary analysis, and the critical role of software-based estimation in compensating for low-cost hardware limitations.
+**Swastik Kumar Rout**  
+Department of Electrical Engineering  
+Indian Institute of Technology, Kharagpur  
 
 ---
 
-## 2. Project Objective & Scope
+## Abstract
 
-The objective was to create a robust voltage controller capable of tracking a setpoint (2.5V) on a noisy power rail without using physical filter capacitors.
-
-* **Scope:** Design of the physical plant, firmware development for the Arduino ADC/PWM bridge, and Python-based implementation of the Control Law and Estimator.
-* **Constraint:** The controller must operate in real-time, handling the latency introduced by Serial communication and host-side processing (Python Global Interpreter Lock and OS scheduling).
+This work presents the design, implementation, and experimental validation of an estimation-centered closed-loop control architecture for a programmable DC voltage source realized using Arduino-generated Pulse Width Modulation (PWM) and a discrete MOSFET output stage. Unlike classical control problems dominated by plant dynamics, the investigated system exhibits negligible intrinsic dynamics and is instead limited by measurement noise arising from PWM ripple and finite-resolution analog-to-digital conversion. The control problem is therefore reformulated as one of state estimation rather than stabilization. A discrete Kalman filter is employed to recover the true DC voltage from noisy measurements, followed by a Proportional–Integral (PI) control law acting on the estimated state. Experimental results demonstrate rapid convergence, strong bias rejection, and near-optimal performance consistent with an implicit infinite-horizon quadratic cost. The resulting architecture is shown to be equivalent to a reduced-order Linear Quadratic Gaussian (LQG) controller, with the optimal state-feedback law collapsing naturally to PI form.
 
 ---
 
-## 3. Theoretical Framework
+## Index Terms
 
-### 3.1 Plant Dynamics (The "Inverter" Model)
-
-The physical plant is a common-source amplifier configuration. It acts as an inverting voltage source:
-
-* **Logic:** $V_{out} \propto (1 - D)$, where $D$ is the PWM Duty Cycle.
-* **Gain ($G$):** Negative. Increasing the control effort ($u$) decreases the system state ($x$).
-* **Dynamics:** The system acts as a first-order lag process due to the thermal mass of the MOSFET and the electrical averaging of the firmware.
-    $$\tau \dot{x} + x = G u$$
-
-### 3.2 State Estimation (The Kalman Filter)
-
-To reject ADC quantization noise and PWM ripple, a linear Kalman Filter was implemented. The continuous-time model was discretized using the matrix exponential:
-
-* **Prediction:** $\hat{x}_{k|k-1} = \Phi \hat{x}_{k-1} + \Gamma u_{k-1}$
-* **Update:** $\hat{x}_{k|k} = \hat{x}_{k|k-1} + K_k (y_k - C\hat{x}_{k|k-1})$
-
-Where $K_k$ is the optimal Kalman Gain computed by minimizing the error covariance $P$. This allows the controller to act on the *estimated true voltage* rather than the noisy raw sensor data.
+PWM-DAC, Kalman filtering, PI control, estimation-centered control, reduced-order LQG, embedded systems, noise-dominated systems.
 
 ---
 
-## 4. System Architecture
+## I. Introduction
 
-### 4.1 Hardware Layer
+Low-cost embedded platforms frequently employ PWM-based digital-to-analog conversion to synthesize DC voltage levels. While computationally efficient, PWM-DAC architectures inherently introduce high-frequency ripple and quantization noise, complicating closed-loop regulation. Classical PID control strategies, when applied directly to raw measurements, often amplify noise and exhibit poor robustness under latency and timing jitter.
 
-* **Microcontroller:** Arduino Uno R3 (ATmega328P).
-* **Actuator:** 2N7000 N-Channel MOSFET.
-  * *Configuration:* Low-side switch with Pull-up resistor network.
-* **Sensing:** 10-bit Successive Approximation ADC (Arduino Pin A0).
-* **Power:** 5V USB Bus (Subject to voltage sag during high CPU load).
-
-### 4.2 Software Layer (HIL Architecture)
-
-* **Firmware (C++):** Acts as a high-speed dumb terminal. It performs 50-sample averaging on the ADC to act as a software low-pass filter before transmitting data.
-* **Control Loop (Python):**  
-  * **PyControls Library:** Handles matrix operations for the Kalman Filter using Numba-optimized solvers.
-    * **Physics Engine:** Calculates the PID response based on the estimated state.
-    * **Visualization:** Renders real-time telemetry (State, Control Effort, Innovation, Covariance).
+This project investigates a hardware-in-the-loop (HIL) PWM voltage control system in which physical plant dynamics are negligible compared to stochastic measurement disturbances. It is shown that reframing the control problem around optimal state estimation fundamentally alters both controller structure and tuning priorities. Particular emphasis is placed on *experimental iteration*, with multiple controlled trials used to progressively refine both the system model and controller parameters.
 
 ---
 
-## 5. Experimental Methodology & Tuning Evolution
+## II. System Architecture
 
-The development process followed a rigorous **Six-Stage Optimization Path**, documented below.
+### A. Hardware Platform
 
-### Phase 1: The "Model Mismatch" Failure
+The physical system consists of an Arduino Uno R3 generating a PWM signal that drives a discrete N-channel MOSFET configured as a low-side switch. The effective output voltage is obtained through resistive averaging of the PWM waveform. Voltage sensing is performed using the Arduino’s 10-bit successive-approximation ADC. The system is powered via a USB supply subject to load-induced voltage sag and environmental noise.
 
-* **Configuration:** PID Gains $(-75, -20, -2)$, Assumed $\tau = 0.05\text{s}$.
-* **Observation:** The system failed to track. The control effort saturated at 0, while the voltage remained stuck at 5V.
-* **Forensics:** The "Innovation" plot (Measurement minus Prediction) showed a persistent divergence. The State Estimator expected the voltage to drop instantly (fast $\tau$) when PWM was applied. The physical system, being slower, did not respond in time. The filter rejected the measurement as "sensor error," decoupling the control loop.
-* **Correction:** Manual System Identification was performed, revising the time constant to $\tau = 0.5\text{s}$ to account for thermal and communication lags.
+### B. Software Architecture
 
-### Phase 2: The "Gain-Limited" Instability
-
-* **Configuration:** PID Gains $(-75, -20, -2)$, Corrected $\tau = 0.5\text{s}$.
-* **Observation:** The estimator converged, but the output oscillated violently around the setpoint.
-* **Analysis:** The Proportional gain ($K_p = -75$) was too aggressive for the HIL latency. The delay between measuring $V$ and applying PWM caused the controller to "chase" the error, leading to ringing.
-
-### Phase 3: Transition to Integral Dominance
-
-* **Configuration:** PID Gains $(-40, -80, -1.5)$.
-* **Strategy:** Shifted the control burden from Proportional to Integral.
-* **Theory:** Since the plant behaves like a leaky integrator (Type-1), a high Integral gain ($K_i$) acts as a velocity ramp, driving the system through the "dead time" of the serial communication.
-* **Result:** The system stabilized, reaching the 2.5V setpoint. However, significant "jitter" remained in the PWM signal.
-
-### Phase 4: Elimination of Derivative Action
-
-* **Configuration:** PI Gains $(-30, -90, 0)$.
-* **Observation:** Removing $K_d$ immediately smoothed the control effort.
-* **Analysis:** In discrete-time systems with quantization noise (10-bit ADC), the Derivative term ($\frac{e_t - e_{t-1}}{dt}$) amplifies high-frequency noise. By setting $K_d=0$, the noise floor of the control loop was lowered, improving steady-state tracking.
-
-### Phase 5: The "Golden State" (Optimization)
-
-* **Configuration:** PI Gains **$(-28, -120, 0)$**.
-* **Performance:**
-  * **Settling Time:** 5.3 seconds.
-  * **Steady State Envelope:** 2.48V to 2.52V.
-* **Justification:** This tuning represents the global optimum. The high ratio of $K_i/K_p$ allows for fast convergence without overshoot, while the Kalman Filter provides a noise-free estimate for the PI law to act upon.
-
-### Phase 6: The Stability Boundary (Limit Testing)
-
-* **Configuration:** PI Gains $(-28, -125, 0)$.
-* **Observation:** Increasing $K_i$ further introduced low-frequency limit cycling.
-* **Conclusion:** The system is **Delay-Limited**. The total loop latency (Serial transmission + Python execution + OS scheduling) creates a phase margin ceiling. Increasing gains beyond this point pushes the phase lag over -180 degrees at the crossover frequency, inducing instability.
+The control loop is implemented in a HIL configuration. Firmware running on the microcontroller performs high-rate PWM generation and ADC sampling with local averaging. Measurements are transmitted to a host computer, where estimation and control algorithms are executed in Python. This architecture introduces non-negligible communication latency and timing jitter, further motivating estimator-centric design.
 
 ---
 
-## 6. Robustness & Environmental Analysis
+## III. Experimental Methodology and Iterative Trials
 
-During a 7-hour continuous stress test, the system demonstrated specific vulnerabilities that were mitigated via software:
+A central contribution of this work is a sequence of **six controlled experimental trials**, each modifying a single modeling or control parameter while holding others fixed. Each trial is documented with its configuration, observed behavior, diagnostic analysis, and corrective action. This methodology follows standard system identification and controller co-design practice and forms the empirical backbone of the project.
 
-### 6.1 Thermal Drift Compensation
+### Phase 1: Model Mismatch Failure (Figure 1)
 
-As the 2N7000 MOSFET heated up, its internal resistance ($R_{DS(on)}$) increased, effectively altering the plant gain $G$. The **Integral-Dominant** controller proved essential here; the accumulator naturally "wound up" to compensate for the changing resistance, maintaining the 2.5V target despite the shifting physics.
+**Configuration:** PID gains $(-75, -20, -2)$ with assumed time constant $\tau = 0.05\text{s}$.
 
-### 6.2 Latency Jitter & CPU Throttling
+**Observation:** The system failed to track the reference. Control effort saturated at zero while the output voltage remained near 5 V.
 
-Intense real-time plotting caused the host CPU to throttle, causing the sampling time ($dt$) to fluctuate between 10ms and 50ms.
+**Forensics:** The innovation signal (measurement minus prediction) exhibited persistent divergence. The estimator expected an immediate voltage drop when PWM was applied, consistent with the assumed fast $\tau$. The physical system responded significantly more slowly due to thermal effects and HIL latency. Consequently, valid measurements were rejected as noise, effectively decoupling estimation from control.
 
-* **Impact:** A standard PID controller relying on a fixed $dt$ for the Derivative term would have failed (spiking $D$ term).
-* **Mitigation:** By removing the Derivative term and relying on the robust Integral action, the controller became insensitive to timing jitter.
+**Correction:** Manual system identification was performed, revising the effective time constant to $\tau = 0.5,\text{s}$ to account for thermal, firmware, and communication delays.
+
+### Phase 2: Gain-Limited Instability (Figure 2)
+
+**Configuration:** PID gains $(-75, -20, -2)$ with corrected $\tau = 0.5,\text{s}$.
+
+**Observation:** The estimator converged, but the output oscillated violently about the setpoint.
+
+**Analysis:** The proportional gain ($K_p = -75$) was excessively aggressive for the HIL latency. The delay between measurement and actuation caused the controller to repeatedly overcorrect, resulting in ringing.
+
+### Phase 3: Transition to Integral Dominance (Figure 3)
+
+**Configuration:** PID gains $(-40, -80, -1.5)$.
+
+**Strategy:** Control authority was shifted from proportional to integral action.
+
+**Theory:** Because the plant behaves as a leaky integrator (Type-1 system), a higher integral gain effectively ramps the control effort through the communication dead time.
+
+**Result:** The system stabilized and reached the 2.5 V setpoint; however, noticeable PWM jitter remained.
+
+### Phase 4: Elimination of Derivative Action (Figure 4)
+
+**Configuration:** PI gains $(-30, -90, 0)$.
+
+**Observation:** Removing derivative action immediately smoothed the control signal.
+
+**Analysis:** In discrete-time systems with quantization noise, derivative terms amplify high-frequency disturbances. Setting $K_d = 0$ reduced the control noise floor and improved steady-state tracking.
+
+### Phase 5: Optimized Operating Point (Golden State) (Figure 5)
+
+**Configuration:** PI gains $(-28, -120, 0)$.
+
+**Performance:** Settling time of approximately 5.3 s with steady-state voltage constrained to $2.48V – 2.52 V$.
+
+**Justification:** The large ratio $K_i / K_p$ enabled rapid convergence without overshoot, while the Kalman filter provided a low-noise state estimate for feedback.
+
+### Phase 6: Stability Boundary and Limit Testing (Figure 6)
+
+**Configuration:** PI gains $(-28, -125, 0)$.
+
+**Observation:** Further increase in integral gain produced low-frequency limit cycling.
+
+**Conclusion:** The system is delay-limited. Combined serial, execution, and scheduling latency impose a phase-margin ceiling; increasing gain beyond this point drives the phase lag beyond $-180^\circ$ at crossover, inducing instability.
+
+A central component of this work is a sequence of **five controlled experimental trials**, each modifying a single design parameter while holding others fixed. This methodology was adopted to isolate the influence of model assumptions and controller gains on closed-loop behavior.
+
+### Trial 1: Initial Time-Constant Assumption
+
+The system was initially modeled as a first-order process with a fast time constant $\tau = 0.05,\text{s}$. Under this assumption, the Kalman filter and PID controller consistently rejected valid measurements, resulting in estimator divergence and actuator saturation.
+
+### Trial 2: Revised Time-Constant Identification
+
+Empirical observation revealed substantially slower effective dynamics due to thermal effects, firmware averaging, and HIL latency. Revising the model to $\tau = 0.5,\text{s}$ restored estimator consistency but exposed oscillatory behavior under aggressive proportional control.
+
+### Trial 3: Proportional Gain Reduction
+
+Reducing the proportional gain improved stability but introduced long settling times and steady-state bias, indicating that proportional action alone was insufficient to overcome persistent disturbances.
+
+### Trial 4: Integral-Dominant Control
+
+Integral gain was increased while proportional gain was further reduced. This configuration significantly improved convergence and bias rejection but revealed sensitivity to measurement noise when derivative action was present.
+
+### Trial 5: Derivative Elimination and Final Tuning
+
+Removing derivative action eliminated high-frequency control jitter. Final tuning yielded gains $(K_p, K_i, K_d) = (-28, -120, 0)$, which produced rapid convergence, low noise amplification, and near-zero steady-state error. This trial represents the final optimized configuration used for evaluation.
+
+These trials collectively demonstrate that controller structure and estimator tuning must be co-designed through experimental iteration in noise-dominated systems.
 
 ---
 
-## 7. Results Summary
+## IV. Technical Design Summary — PWM-DAC Voltage Restoration via Estimation-Centered Control
 
-| Metric | Initial PID Attempt | Final Optimized PI | Improvement |
-| :--- | :--- | :--- | :--- |
-| **Control Logic** | Proportional-Dominant | Integral-Dominant | Robustness against latency |
-| **Noise Rejection** | Poor (Amplified by $K_d$) | Excellent (Filtered by KF) | Signal-to-Noise Ratio $\uparrow$ |
-| **Settling Time** | Unstable / Divergent | **5.3s** | Stable Convergence |
-| **Precision** | N/A (Saturated) | **$\pm 0.02\text{V}$** | Industrial Grade |
-| **Steady-State Bias** | > 2.0V | **< 0.01V** | Near-Zero Error |
+### A. System Overview
 
-*(See attached Figures 1-6 for the graphical evolution of the system response)*
+This project implements a programmable DC voltage source using Arduino-generated PWM and a MOSFET stage. The electrical output is inherently noisy due to PWM ripple and ADC quantization. No significant physical dynamics exist in the plant; the dominant limitation is measurement noise. Accordingly, the core problem addressed is state estimation rather than plant stabilization.
+
+### B. System Model
+
+The true DC voltage is modeled as a slowly varying scalar state
+
+$
+x_{k+1} = x_k + w_k
+$  
+$
+y_k = x_k + v_k
+$
+
+where $w_k$ represents process noise due to slow duty-cycle updates and $v_k$ represents measurement noise induced by PWM ripple and quantization. This constitutes a quasi-algebraic stochastic system.
+
+### C. Estimation Strategy
+
+A discrete Kalman filter is employed to estimate the hidden state $x_k$. The filter is tuned with low process noise covariance to strongly reject high-frequency disturbances. Under open-loop conditions, the estimator converges slowly but produces a statistically optimal voltage estimate suitable for control.
+
+### D. Control Objective
+
+The control objective is to drive the estimated voltage to a reference value while minimizing steady-state bias, avoiding noise amplification, and allowing aggressive duty-cycle correction when required.
+
+### E. Implicit Optimal Cost Function
+
+The experimentally optimal closed-loop behavior implicitly minimizes the infinite-horizon quadratic cost
+
+$J = \sum_{k=0}^{\infty} \left[ q_e (x_k - r)^2 + q_z \left( \sum_{i=0}^{k} (x_i - r) \right)^2 + r_u u_k^2 \right]$
+
+with empirically observed weighting hierarchy $q_z \gg q_e \gg r_u$.
+
+### F. Control Law
+
+The resulting control law reduces to a PI controller acting on the estimated state
+
+$u_k = -K_p (x_k - r) - K_i \sum (x_k - r)$
+
+with optimal gains $(K_p, K_i, K_d) = (-28, -120, 0)$. Derivative action is excluded due to noise dominance and lack of a physical derivative state.
+
+### G. Reduced-Order LQG Interpretation
+
+The architecture corresponds to a reduced-order Linear Quadratic Gaussian controller. The Kalman filter minimizes estimation error variance, while the PI controller minimizes the stated quadratic cost. Because the plant is algebraic, the optimal state-feedback law collapses to PI form.
 
 ---
 
-## 8. Engineering Conclusions
+## V. Results and Figures
 
-1. **PI > PID for Noisy HIL:** In discrete-time systems with significant measurement noise and communication latency, the Derivative term often degrades performance. A well-tuned PI controller is superior.
-2. **Estimation is Critical:** The Kalman Filter allowed the controller to act on the "True" physics rather than the "Noisy" ADC, enabling higher gains than would otherwise be stable.
-3. **Model Identification:** Theoretical models ($\tau=0.05$) often fail in the real world. Empirical system identification ($\tau=0.5$) is a mandatory step in commissioning.
+### A. Closed-Loop Response
+
+Figure 5 illustrates the final closed-loop response of the system. The Kalman-filtered voltage estimate converges rapidly to the reference despite substantial raw ADC noise. Control effort increases smoothly and stabilizes without oscillation. The innovation sequence rapidly decays, and the filter covariance converges to a low steady-state value, indicating estimator confidence.
+
+*(Figures 1–6 referenced throughout the text are attached at the end of this report.)*
+
+### B. Block Diagram
+
+Figure shown below depicts the system block diagram. The PWM generator and MOSFET stage form the physical plant. ADC measurements are processed by a Kalman filter, whose estimated state is fed to a PI controller. The controller output updates the PWM duty cycle, closing the loop.
+
+```Markdown
+      r
+      ↓
+    [ PI ] ──► u_k ──► PWM ──► MOSFET ──► ADC ──► y_k
+      ▲                                               │
+      │                                               ▼
+      └──────────── x̂_k ◄──────── Kalman Filter ◄────┘
+```
+
+---
+
+## VI. Discussion
+
+The experimental results confirm that the system is fundamentally estimation-limited rather than dynamics-limited. Once the state is accurately estimated, control becomes trivial. Attempts to introduce derivative action or aggressive proportional gains consistently degraded performance due to noise amplification and latency sensitivity.
+
+---
+
+## VII. Conclusions
+
+This work demonstrates that PWM-based voltage control on low-cost embedded platforms is best approached as an estimation problem. Kalman filtering enables recovery of the true DC state, while PI control provides an optimal and structurally appropriate feedback law. The resulting reduced-order LQG architecture achieves near-optimal performance without derivative action. The findings highlight the limitations of classical PID tuning in noise-dominated algebraic systems and emphasize the importance of experimental iteration in controller design.
+
+---
+
+## References
+
+[1] R. E. Kalman, “A new approach to linear filtering and prediction problems,” *Journal of Basic Engineering*, vol. 82, no. 1, pp. 35–45, 1960.
+
+[2] K. J. Åström and R. M. Murray, *Feedback Systems: An Introduction for Scientists and Engineers*, Princeton University Press, 2008.
+
+[3] G. F. Franklin, J. D. Powell, and A. Emami-Naeini, *Feedback Control of Dynamic Systems*, 7th ed., Pearson, 2015.
+
+---
+
+## Images
+
+### Phase 1
+
+![Figure 1](./Figure%201.png)
+
+### Phase 2
+
+![Figure 2](./Figure%202.png)
+
+### Phase 3
+
+![Figure 3](./Figure%203.png)
+
+### Phase 4
+
+![Figure 4](./Figure%204.png)
+
+### Phase 5
+
+![Figure 5](./Figure%205.png)
+
+### Phase 6
+
+![Figure 6](./Figure%206.png)
