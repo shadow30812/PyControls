@@ -18,6 +18,7 @@ from core.math_utils import make_system_func
 from core.mpc import ModelPredictiveControl
 from core.solver import ExactSolver, NonlinearSolver
 from core.ukf import UnscentedKalmanFilter
+from helpers.config import BATTERY_KF, BATTERY_PID
 from helpers.exit import flush, kill, stop
 from helpers.system_registry import SYSTEM_REGISTRY
 from modules.interactive_lab import InteractiveLab, pendulum_lqr_controller
@@ -104,6 +105,8 @@ class PyControlsApp:
             config, "THERMISTOR_PARAMS"
         ):
             self.active_params.update(config.THERMISTOR_PARAMS)
+        elif self.current_system_id == "battery" and hasattr(config, "BATTERY_PARAMS"):
+            self.active_params.update(config.BATTERY_PARAMS)
 
         self.system = (
             self.current_descriptor.system_class()
@@ -328,7 +331,8 @@ class PyControlsApp:
             y_meas = y_real_vector + noise
 
             if kf:
-                kf.update(np.array([[u_val]]), y_meas)
+                kf.predict(np.array([[u_val]]))
+                kf.update(y_meas)
                 x_est_hist.append(kf.x_hat.flatten())
 
             y_real_hist.append(y_real_vector.flatten())
@@ -675,6 +679,8 @@ class PyControlsApp:
                             config, "THERMISTOR_PARAMS"
                         ):
                             self.active_params.update(config.THERMISTOR_PARAMS)
+                        elif new_id == "battery" and hasattr(config, "BATTERY_PARAMS"):
+                            self.active_params.update(config.BATTERY_PARAMS)
 
                         self.system.params = self.active_params.copy()
                     else:
@@ -1183,6 +1189,35 @@ class PyControlsApp:
                     ekf, measurement_func=current_sys_instance.measurement
                 )
 
+        elif self.current_system_id == "battery":
+            pid = PIDController(
+                Kp=BATTERY_PID["Kp"],
+                Ki=BATTERY_PID["Ki"],
+                Kd=BATTERY_PID["Kd"],
+                output_limits=(0, 255),
+            )
+
+            ss = self.system.get_state_space()
+            phi = np.array([[np.exp(ss.A[0, 0] * lab.dt)]])
+            gamma = (phi - 1) * (1 / ss.A[0, 0]) * ss.B
+
+            kf = KalmanFilter(
+                phi,
+                gamma,
+                ss.C,
+                Q=np.array([BATTERY_KF["Q"]]),
+                R=np.array([BATTERY_KF["R"]]),
+                x0=[0.0],
+            )
+            lab.set_estimator(kf)
+
+            def battery_ctrl(state_est, t):
+                u_raw = pid.update(state_est[0], self.active_params["setpoint"], lab.dt)
+                pwm = np.clip(u_raw, 0, 255)
+                return pwm
+
+            lab.set_auto_controller(battery_ctrl)
+
         print("\nInteractive Lab running (headless mode).")
         print(f"Control mode: {lab.control_mode}")
         print("Press Ctrl+C to stop.\n")
@@ -1223,6 +1258,16 @@ class PyControlsApp:
                     T = lab.state[0]
                     u = actual_u
                     print(f"\rT={T:.2f}°C, u={u:.0f}/255", end="")
+
+                elif lab.descriptor.system_id == "battery":
+                    v_est = lab.state_est[0]
+                    u = lab.last_u
+                    v_avg = lab.last_avg
+                    
+                    print(
+                        f"\rV_est: {v_est:.2f}V | PWM: {u:.0f} | V_avg: {v_avg:.2f}",
+                        end="",
+                    )
 
                 time.sleep(lab.dt if not lab.descriptor.is_hardware else lab.dt * 2)
 

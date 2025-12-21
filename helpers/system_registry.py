@@ -1,3 +1,4 @@
+from systems.battery import Battery
 from systems.dc_motor import DCMotor
 from systems.pendulum import InvertedPendulum
 from systems.thermistor import Thermistor
@@ -58,6 +59,18 @@ SYSTEM_REGISTRY = {
         system_class=Thermistor,
         input_type="PWM",
         state_labels=["Temp (°C)"],
+        supports_analysis=False,
+        supports_estimation=False,
+        supports_mpc=False,
+        supports_interactive_lab=True,
+        is_hardware=True,
+    ),
+    "battery": SystemDescriptor(
+        system_id="battery",
+        display_name="HIL Battery Source",
+        system_class=Battery,
+        input_type="PWM",
+        state_labels=["Voltage (V)"],
         supports_analysis=False,
         supports_estimation=False,
         supports_mpc=False,

@@ -1,11 +1,12 @@
 import select
 import sys
+from collections import deque
 
 import matplotlib.pyplot as plt
 import numpy as np
-
-import helpers.config as config
 from core.control_utils import PIDController
+from helpers.config import BATTERY_PID, THERMISTOR_PID
+
 from modules.physics_engine import (
     dc_motor_dynamics,
     pendulum_dynamics,
@@ -55,7 +56,9 @@ class InteractiveLab:
         self.estimator = None  # type: ignore
         self.use_estimator = False
         self.state_est = None
+
         self.last_u = 0.0
+        self.last_avg = 0.0
 
     def initialize(self):
         """
@@ -79,7 +82,7 @@ class InteractiveLab:
             self.state = np.array([0.0, 0.0], dtype=float)
             self.omega_ref = self.params.get("omega_ref", 1.0)
             self.omega_tol = self.params.get("omega_tol", 0.05)
-            self.success_time_required = 3.0
+            self.success_time_required = 5.0
             self._dynamics = dc_motor_dynamics
 
         elif sid == "pendulum":
@@ -92,8 +95,9 @@ class InteractiveLab:
             self.system_instance = self.descriptor.system_class(**self.params)
             self.system_instance.connect()
             self.state = np.array([25.0])
-            cfg = config.THERMISTOR_PID
-            hil_pid = PIDController(
+            cfg = THERMISTOR_PID
+
+            tmp_pid = PIDController(
                 Kp=cfg["Kp"],
                 Ki=cfg["Ki"],
                 Kd=cfg["Kd"],
@@ -102,7 +106,26 @@ class InteractiveLab:
                 integral_limits=cfg["integral_limits"],
             )
             self.set_auto_controller(
-                lambda s, t: hil_pid.update(s[0], self.params["setpoint"], self.dt)
+                lambda s, t: tmp_pid.update(s[0], self.params["setpoint"], self.dt)
+            )
+            self.control_mode = "AUTO"
+
+        elif sid == "battery":
+            self.system_instance = self.descriptor.system_class(**self.params)
+            self.system_instance.connect()
+            self.state = np.array([0.0])
+            self.success_window = deque()
+            self.success_window_duration = 5.0
+            self.success_tol = 0.05
+
+            pwm_pid = PIDController(
+                BATTERY_PID["Kp"],
+                BATTERY_PID["Ki"],
+                BATTERY_PID["Kd"],
+                output_limits=(0, 255),
+            )
+            self.set_auto_controller(
+                lambda s, t: pwm_pid.update(s[0], self.params["setpoint"], self.dt)
             )
             self.control_mode = "AUTO"
 
@@ -145,6 +168,11 @@ class InteractiveLab:
         if self.descriptor.is_hardware and self.descriptor.system_id == "thermistor":
             self.system_instance.write_pwm(u)
             self.state = np.array([self.system_instance.read_temp()])
+
+        elif self.descriptor.is_hardware and self.descriptor.system_id == "battery":
+            self.system_instance.write_pwm(u)
+            self.state = np.array([self.system_instance.read_voltage()])
+
         else:
             self.state = rk4_fixed_step(
                 self._dynamics,
@@ -176,8 +204,12 @@ class InteractiveLab:
         Clears the current simulation state, stopping execution.
         Also stops hardware circuit(s) connected to the program.
         """
-        if self.descriptor.system_id == "thermistor" and self.system_instance:
+        if (
+            self.descriptor.system_id in ("thermistor", "battery")
+            and self.system_instance
+        ):
             self.system_instance.close()
+
         self.state = None
         self.time = 0.0
         self.running = False
@@ -220,6 +252,20 @@ class InteractiveLab:
                     self.status = "SUCCESS"
             else:
                 self.success_timer = 0.0
+
+        elif self.descriptor.system_id == "battery":
+            v = self.state_est[0]
+            self.success_window.append(v)
+            max_len = int(self.success_window_duration / self.dt)
+            avg_v = sum(self.success_window) / len(self.success_window)
+            self.last_avg = avg_v
+
+            while len(self.success_window) > max_len:
+                self.success_window.popleft()
+
+            if len(self.success_window) == max_len:
+                if abs(avg_v - self.params["setpoint"]) <= self.success_tol:
+                    self.status = "SUCCESS"
 
     def get_control_input(self):
         """
@@ -305,9 +351,9 @@ class InteractiveLab:
         """
         Sets up the Matplotlib figure for real-time plotting.
         """
-        self.fig, self.ax = plt.subplots()
 
         if self.descriptor.system_id == "dc_motor":
+            self.fig, self.ax = plt.subplots()
             self.ax.set_title("DC Motor Speed")
             self.ax.set_xlabel("Time (s)")
             self.ax.set_ylabel("ω (rad/s)")
@@ -317,6 +363,7 @@ class InteractiveLab:
             (self.line,) = self.ax.plot([], [], lw=2)
 
         elif self.descriptor.system_id == "pendulum":
+            self.fig, self.ax = plt.subplots()
             self.ax.set_title("Inverted Pendulum Angle")
             self.ax.set_xlabel("Time (s)")
             self.ax.set_ylabel("θ (rad)")
@@ -326,6 +373,7 @@ class InteractiveLab:
             (self.line,) = self.ax.plot([], [], lw=2)
 
         elif self.descriptor.system_id == "thermistor":
+            self.fig, self.ax = plt.subplots()
             self.ax.set_title("HIL Temperature Control")
             self.ax.set_ylabel("Temp (°C)")
             self.ax.axhline(
@@ -336,6 +384,40 @@ class InteractiveLab:
             self.values = []
             (self.line,) = self.ax.plot([], [], "b-")
 
+        if self.descriptor.system_id == "battery":
+            self.fig, self.axes = plt.subplots(2, 2, figsize=(12, 8))
+            self.ax_v = self.axes[0, 0]
+            self.ax_u = self.axes[0, 1]
+            self.ax_inn = self.axes[1, 0]
+            self.ax_p = self.axes[1, 1]
+
+            self.ax_v.set_title("Voltage Tracking (V)")
+            self.ax_u.set_title("Control Effort (PWM)")
+            self.ax_inn.set_title("Innovation (Residue)")
+            self.ax_p.set_title("Filter Covariance (P)")
+
+            (self.line_v_est,) = self.ax_v.plot([], [], "b-", label="KF Estimate")
+            (self.line_v_raw,) = self.ax_v.plot(
+                [], [], "r.", alpha=0.2, label="Raw ADC"
+            )
+            self.ax_v.axhline(
+                self.params["setpoint"], color="k", ls="--", label="Target"
+            )
+            self.ax_v.legend(loc="upper right", fontsize="small")
+
+            (self.line_u,) = self.ax_u.plot([], [], "g-", label="PWM Input")
+            (self.line_inn,) = self.ax_inn.plot([], [], "m-", label="Innovation")
+            (self.line_p,) = self.ax_p.plot([], [], "k-", label="P (Certainty)")
+
+            self.hist_v_raw = []
+            self.hist_inn = []
+            self.hist_p = []
+            self.times = []
+            self.hist_v_est = []
+            self.hist_u = []
+
+            plt.tight_layout()
+
         plt.ion()
         plt.show()
 
@@ -344,6 +426,8 @@ class InteractiveLab:
         Updates the real-time plot with the latest simulation data.
         """
         self.times.append(self.time)
+        if self.status == "SUCCESS":
+            plt.savefig(f"final_success_plot_{self.descriptor.system_id}.png")
 
         if self.descriptor.system_id == "dc_motor":
             self.values.append(self.state[0])
@@ -351,6 +435,29 @@ class InteractiveLab:
             self.values.append(self.state[2])
         elif self.descriptor.system_id == "thermistor":
             self.values.append(self.state[0])
+
+        elif self.descriptor.system_id == "battery":
+            self.hist_v_est.append(self.state_est[0])
+            self.hist_v_raw.append(self.state[0])
+            self.hist_u.append(self.last_u)
+
+            if self.estimator:
+                innovation = self.hist_v_raw[-1] - self.hist_v_est[-1]
+                self.hist_inn.append(innovation)
+                self.hist_p.append(self.estimator.P[0, 0])
+
+            self.line_v_est.set_data(self.times, self.hist_v_est)
+            self.line_v_raw.set_data(self.times, self.hist_v_raw)
+            self.line_u.set_data(self.times, self.hist_u)
+            self.line_inn.set_data(self.times, self.hist_inn)
+            self.line_p.set_data(self.times, self.hist_p)
+
+            for ax in self.axes.flat:
+                ax.relim()
+                ax.autoscale_view()
+
+            plt.pause(0.001)
+            return
 
         self.line.set_data(self.times, self.values)
         self.ax.relim()

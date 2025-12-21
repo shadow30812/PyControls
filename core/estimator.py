@@ -31,36 +31,49 @@ class KalmanFilter:
         self.x_hat = np.array(x0, dtype=float).reshape(-1, 1)
         self.P = np.eye(self.x_hat.shape[0]) * 0.1
 
-    def update(self, u, y_meas):
+    def predict(self, u, dt=None):
         """
-        Performs both Prediction and Correction in a single step.
+        Performs the a priori prediction step.
+        x[k|k-1] = Phi * x[k-1|k-1] + Gamma * u[k]
+        P[k|k-1] = Phi * P[k-1|k-1] * Phi' + Q
 
         Args:
-            u: Known control input vector.
+            u: Control input vector.
+            dt: Time step (unused here as Phi/Gamma are already discrete,
+                but kept for interface consistency with EKF/UKF).
+        """
+        u = np.atleast_2d(u)
+        if u.shape[0] == 1 and u.shape[1] != 1:
+            u = u.T
+
+        self.x_hat = self.Phi @ self.x_hat + self.Gamma @ u
+        self.P = self.Phi @ self.P @ self.Phi.T + self.Q
+
+    def update(self, y_meas):
+        """
+        Performs the a posteriori correction step.
+        x[k|k] = x[k|k-1] + K * (y - C * x[k|k-1])
+        P[k|k] = (I - K * C) * P[k|k-1]
+
+        Args:
             y_meas: Noisy measurement vector.
 
         Returns:
-            np.array: The updated state estimate.
+            np.array: The updated state estimate (flattened).
         """
-        u = np.atleast_2d(u)
         y_meas = np.atleast_2d(y_meas)
-        if u.shape[0] == 1 and u.shape[1] != 1:
-            u = u.T
         if y_meas.shape[0] == 1 and y_meas.shape[1] != 1:
             y_meas = y_meas.T
 
-        x_pred = self.Phi @ self.x_hat + self.Gamma @ u
-        P_pred = self.Phi @ self.P @ self.Phi.T + self.Q
-
-        y_pred = self.C @ x_pred
+        y_pred = self.C @ self.x_hat
         y_err = y_meas - y_pred
 
-        S = self.C @ P_pred @ self.C.T + self.R
-        K = P_pred @ self.C.T @ np.linalg.inv(S)
+        S = self.C @ self.P @ self.C.T + self.R
+        K = self.P @ self.C.T @ np.linalg.inv(S)
 
-        self.x_hat = x_pred + K @ y_err
+        self.x_hat = self.x_hat + K @ y_err
 
         I = np.eye(self.x_hat.shape[0])
-        self.P = (I - K @ self.C) @ P_pred
+        self.P = (I - K @ self.C) @ self.P
 
         return self.x_hat.flatten()

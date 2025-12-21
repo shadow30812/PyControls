@@ -25,7 +25,6 @@ PENDULUM_PARAMS = {
     "theta_limit": 0.5,
 }
 
-# --- NEW THERMISTOR HIL CONFIGURATION ---
 THERMISTOR_PARAMS = {
     "port": "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0",  # USB(n)
     "baud": 115200,
@@ -42,6 +41,23 @@ THERMISTOR_PID = {
     "Kd": 5.0,
     "output_limits": (0, 255),
     "integral_limits": (-50, 50),  # Anti-windup clamp per project spec
+}
+
+BATTERY_PARAMS = {
+    "port": "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0",  # USB(n)
+    "baud": 115200,
+    "setpoint": 2.5,
+}
+
+BATTERY_KF = {
+    "Q": [1e-3],  # Process noise (How much we trust the model)
+    "R": [1e-2],  # Measurement noise (How much we trust the ADC)
+}
+
+BATTERY_PID = {
+    "Kp": -28.0,
+    "Ki": -105.0,
+    "Kd": 0.0,
 }
 
 SIM_PARAMS = {
