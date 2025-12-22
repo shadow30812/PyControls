@@ -56,8 +56,13 @@ def get_stability_margins(tf, w_start=-2, w_end=5):
                 w[i],
                 w[i + 1],
             )
-        except Exception:
+        except Exception as e:
             w_pc = 0.0
+            print(
+                "Warning! w_pc set to zero in core/analysis/get_stability_margins",
+                e,
+                sep="\n",
+            )
 
     gain_margin = inf
     if w_pc > 0:
@@ -74,8 +79,13 @@ def get_stability_margins(tf, w_start=-2, w_end=5):
                 w[i],
                 w[i + 1],
             )
-        except Exception:
+        except Exception as e:
             w_gc = 0.0
+            print(
+                "Warning! w_gc set to zero in core/analysis/get_stability_margins",
+                e,
+                sep="\n",
+            )
 
     phase_margin = inf
     if w_gc > 0:

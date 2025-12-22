@@ -2,19 +2,6 @@ import numpy as np
 
 from core.exceptions import DimensionMismatchError
 
-try:
-    from numba import njit
-
-    NUMBA_AVAILABLE = True
-except ImportError:
-    NUMBA_AVAILABLE = False
-
-    def njit(*args, **kwargs):
-        def decorator(func):
-            return func
-
-        return decorator
-
 
 class StateSpace:
     """
@@ -126,6 +113,9 @@ class StateSpace:
                 mags[k] = 20.0 * np.log10(np.abs(resp))
                 phases[k] = np.degrees(np.angle(resp))
             except np.linalg.LinAlgError:
+                print(
+                    "Np LinAlg error in core/state_space/StateSpace/get_frequency_response"
+                )
                 mags[k] = np.inf
                 phases[k] = 0.0
 

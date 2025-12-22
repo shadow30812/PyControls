@@ -53,7 +53,8 @@ class Thermistor:
                 line = self.arduino.readline().decode().strip()
                 if line.startswith("A:"):
                     self.current_temp = self._adc_to_celsius(int(line.split(":")[1]))
-            except Exception:
+            except Exception as e:
+                print("Error in thermistor", e, sep="\n")
                 pass
 
         return self.current_temp
@@ -68,6 +69,7 @@ class Thermistor:
             )
             return (1.0 / inv_T) - 273.15
         except Exception:
+            print("ERROR\nPlotting base temperature...")
             return 25.0
 
     def get_state_space(self):

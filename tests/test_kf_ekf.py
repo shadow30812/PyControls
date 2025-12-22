@@ -37,7 +37,8 @@ class TestEstimators(unittest.TestCase):
         measurements = np.random.normal(10, 0.5, 50)
 
         for z in measurements:
-            kf.update(u=0, y_meas=z)
+            kf.predict(u=0)
+            kf.update(y_meas=z)
 
         self.assertTrue(9.0 < kf.x_hat[0, 0] < 11.0)
 

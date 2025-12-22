@@ -60,7 +60,12 @@ def make_func(
         safe_locals[var_name] = value
         try:
             return eval(code, {"__builtins__": {}}, safe_locals)
-        except Exception:
+        except Exception as e:
+            print(
+                "Error in core/math_utils/make_func/f",
+                e,
+                sep="\n",
+            )
             return 0.0
 
     return f
@@ -85,7 +90,12 @@ def make_system_func(expr_string: str):
         try:
             res = eval(code, {"__builtins__": {}}, loc)
             return np.asarray(res, dtype=float)
-        except Exception:
+        except Exception as e:
+            print(
+                "Error in core/math_utils/make_system_func/f",
+                e,
+                sep="\n",
+            )
             return np.zeros_like(x)
 
     return f
@@ -104,7 +114,12 @@ class Differentiation:
         except Exception:
             try:
                 return (func(point + hf) - func(point - hf)) / (2 * hf)
-            except Exception:
+            except Exception as e:
+                print(
+                    "Could not differentiate: core/math_utils/Differentiation/real_diff",
+                    e,
+                    sep="\n",
+                )
                 return 0.0
 
 
@@ -284,9 +299,10 @@ class Root:
             try:
                 return self.brent_root(func, x0, x1, tol=tol, f_tol=tol)
             except (ValueError, ConvergenceError):
-                pass
+                print("Error in Brent's root")
 
         try:
             return self.newton_root(func, x0, tol=tol)
         except ConvergenceError:
+            print("Error in Newton's root")
             return x0

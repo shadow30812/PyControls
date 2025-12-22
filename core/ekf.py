@@ -61,8 +61,12 @@ class ExtendedKalmanFilter:
                 J = Y_perturb.imag / epsilon
                 return J
 
-            except Exception:
-                pass
+            except Exception as e:
+                print(
+                    "Error in core/ekf/ExtendedKalmanFilter/compute_jacobian",
+                    e,
+                    sep="\n",
+                )
 
         except (TypeError, ValueError, AttributeError):
             x_perturb = x_complex.copy()
@@ -117,6 +121,9 @@ class ExtendedKalmanFilter:
         try:
             K = self.P @ H.T @ np.linalg.inv(S)
         except np.linalg.LinAlgError:
+            print(
+                "Np LinAlg error in core/ekf/ExtendedKalmanFilter/update",
+            )
             K = np.zeros((self.n, y_meas.shape[0]))
 
         self.x_hat = self.x_pred + K @ y_err

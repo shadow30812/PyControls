@@ -17,8 +17,9 @@ from modules.physics_engine import (
 class DummyDescriptor:
     """Minimal system descriptor for InteractiveLab tests."""
 
-    def __init__(self, system_id):
+    def __init__(self, system_id, is_hardware=False):
         self.system_id = system_id
+        self.is_hardware = is_hardware
 
 
 class DummyEstimator:
@@ -261,6 +262,7 @@ class TestInteractiveLabExtended(unittest.TestCase):
         class DummyDescriptor:
             def __init__(self, sid):
                 self.system_id = sid
+                self.is_hardware = False
 
         params = {"J": 1.0, "b": 0.1, "K": 0.1, "R": 1.0, "L": 1.0}
 

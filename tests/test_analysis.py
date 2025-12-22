@@ -22,8 +22,8 @@ class TestAnalysis(unittest.TestCase):
         tf = TransferFunction([1], [1, -1])
         try:
             get_stability_margins(tf)
-        except Exception:
-            pass
+        except Exception as e:
+            print("Skipped analysis test", e, sep="\n")
 
     def test_margins_infinite(self):
         tf = TransferFunction([1], [1, 1])

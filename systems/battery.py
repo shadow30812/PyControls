@@ -1,5 +1,6 @@
 import numpy as np
 import serial
+
 from core.state_space import StateSpace
 from helpers.config import BATTERY_PARAMS
 
@@ -51,10 +52,8 @@ class Battery:
         return self.current_voltage
 
     def get_state_space(self):
-        # First-order model: tau*dV/dt + V = G*u
-        # A = [-1/tau], B = [G/tau], C = [1], D = [0]
-        tau = 0.5  # Estimated time constant of the averaging
-        G = -5.0 / 255  # The MOSFET is an inverter (Higher PWM = Lower Drain Voltage)
+        tau = 0.5
+        G = -5.0 / 255
 
         A = np.array([[-1.0 / tau]])
         B = np.array([[G / tau]])

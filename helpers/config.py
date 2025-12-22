@@ -28,11 +28,11 @@ PENDULUM_PARAMS = {
 THERMISTOR_PARAMS = {
     "port": "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0",  # USB(n)
     "baud": 115200,
-    "R_divider": 10000.0,  # 10k fixed resistor
-    "Beta": 3950.0,  # Thermistor Beta constant
-    "R0": 10000.0,  # Resistance at 25C
-    "T0": 298.15,  # 25C in Kelvin
-    "setpoint": 45.0,  # Target temperature in Celsius
+    "R_divider": 10000.0,
+    "Beta": 3950.0,
+    "R0": 10000.0,
+    "T0": 298.15,
+    "setpoint": 45.0,
 }
 
 THERMISTOR_PID = {
@@ -40,7 +40,7 @@ THERMISTOR_PID = {
     "Ki": 1.5,
     "Kd": 5.0,
     "output_limits": (0, 255),
-    "integral_limits": (-50, 50),  # Anti-windup clamp per project spec
+    "integral_limits": (-50, 50),
 }
 
 BATTERY_PARAMS = {
@@ -50,8 +50,8 @@ BATTERY_PARAMS = {
 }
 
 BATTERY_KF = {
-    "Q": [1e-3],  # Process noise (How much we trust the model)
-    "R": [1e-2],  # Measurement noise (How much we trust the ADC)
+    "Q": [1e-3],
+    "R": [1e-2],
 }
 
 BATTERY_PID = {
@@ -116,6 +116,8 @@ PLOT_PARAMS = {
 
 CUSTOM_SIM_PARAMS = {
     "dt": 0.001,
+    "dt_min": 1e-5,
+    "dt_max": 0.1,
     "t_end": 5.0,
     "step_time": 0.5,
     "step_magnitude": 1.0,
@@ -156,18 +158,6 @@ UKF_PARAMS = {
     "kappa": 0.0,
 }
 
-MPC_PARAMS = {
-    "dt": 0.05,
-    "t_end": 10.0,
-    "horizon": 20,
-    "Q_weight": [10.0, 0.0],
-    "R_weight": [0.1],
-    "u_min": -12.0,
-    "u_max": 12.0,
-    "learning_rate": 0.5,
-    "iterations": 20,
-}
-
 DC_MOTOR_DEFAULTS = {
     "J": 0.01,
     "b": 0.1,
@@ -205,8 +195,10 @@ MPC_SOLVER_PARAMS = {
     "finite_diff_eps": 1e-5,
     "ilqr_reg": 1.0,
     "ilqr_alphas": [1.0, 0.5, 0.25, 0.1],
-    "default_linear_iters": 50,
-    "default_nonlinear_iters": 10,
+    "default_linear_iters": 50,  # override by MPC_MOTOR_PARAMS
+    "default_nonlinear_iters": 10,  # override by MPC_PENDULUM_PARAMS
+    "ilqr_tol": 1e-3,
+    "mpc_stride": 3,
 }
 
 SOLVER_PARAMS = {
@@ -286,7 +278,7 @@ MPC_PENDULUM_PARAMS = {
     "u_min": -20.0,
     "u_max": 20.0,
     "start_theta": np.pi,
-    "iterations": 30,
+    "iterations": 10,
 }
 
 """

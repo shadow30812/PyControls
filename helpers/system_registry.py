@@ -1,3 +1,8 @@
+import importlib
+import inspect
+import os
+import pkgutil
+
 from systems.battery import Battery
 from systems.dc_motor import DCMotor
 from systems.pendulum import InvertedPendulum
@@ -78,3 +83,26 @@ SYSTEM_REGISTRY = {
         is_hardware=True,
     ),
 }
+
+
+def load_available_systems():
+    systems = {}
+    systems_path = os.path.join(os.getcwd(), "systems")
+
+    for _, name, _ in pkgutil.iter_modules([systems_path]):
+        module_name = f"systems.{name}"
+        try:
+            module = importlib.import_module(module_name)
+            for member_name, member_obj in inspect.getmembers(module, inspect.isclass):
+                if (
+                    (
+                        hasattr(member_obj, "get_closed_loop_tf")
+                        and hasattr(member_obj, "get_disturbance_tf")
+                    )
+                    or member_name in ("thermistor", "battery")
+                ) and member_obj.__module__ == module_name:
+                    systems[member_name] = member_obj
+        except Exception as e:
+            print(f"Warning: Could not load system '{name}': {e}")
+
+    return systems

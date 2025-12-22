@@ -446,6 +446,43 @@ class InvertedPendulum:
 
         return mpc_dynamics_dispatcher
 
+    def linearize(self, x, u, dt):
+        """
+        Analytic discrete-time linearization:
+        x_{k+1} = A x_k + B u_k
+        """
+        m = self.params["m"]
+        M = self.params["M"]
+        l = self.params["l"]
+        g = self.params["g"]
+
+        theta = x[0]
+
+        s = np.sin(theta)
+        c = np.cos(theta)
+
+        denom = M + m * s * s
+
+        A = np.zeros((4, 4))
+        B = np.zeros((4, 1))
+
+        A[0, 0] = 1.0
+        A[0, 1] = dt
+
+        A[1, 0] = dt * (g * (M + m) * c / (l * denom))
+        A[1, 1] = 1.0
+
+        A[2, 2] = 1.0
+        A[2, 3] = dt
+
+        A[3, 0] = dt * (-g * m * s * c / denom)
+        A[3, 3] = 1.0
+
+        B[1, 0] = dt * (-c / (l * denom))
+        B[3, 0] = dt * (1.0 / denom)
+
+        return A, B
+
 
 class LQRLoopTransferFunction:
     """
@@ -477,4 +514,7 @@ class LQRLoopTransferFunction:
             return val
 
         except np.linalg.LinAlgError:
+            print(
+                "Np LinAlg error in systems/pendulum/LQRLoopTransferFunction/evaluate"
+            )
             return np.inf
