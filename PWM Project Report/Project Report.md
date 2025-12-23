@@ -50,11 +50,11 @@ A central contribution of this work is a sequence of **six controlled experiment
 
 **Forensics:** The innovation signal (measurement minus prediction) exhibited persistent divergence. The estimator expected an immediate voltage drop when PWM was applied, consistent with the assumed fast $\tau$. The physical system responded significantly more slowly due to thermal effects and HIL latency. Consequently, valid measurements were rejected as noise, effectively decoupling estimation from control.
 
-**Correction:** Manual system identification was performed, revising the effective time constant to $\tau = 0.5,\text{s}$ to account for thermal, firmware, and communication delays.
+**Correction:** Manual system identification was performed, revising the effective time constant to $\tau = 0.5\text{s}$ to account for thermal, firmware, and communication delays.
 
 ### Phase 2: Gain-Limited Instability (Figure 2)
 
-**Configuration:** PID gains $(-75, -20, -2)$ with corrected $\tau = 0.5,\text{s}$.
+**Configuration:** PID gains $(-75, -20, -2)$ with corrected $\tau = 0.5\text{s}$.
 
 **Observation:** The estimator converged, but the output oscillated violently about the setpoint.
 
@@ -82,7 +82,11 @@ A central contribution of this work is a sequence of **six controlled experiment
 
 **Configuration:** PI gains $(-28, -120, 0)$.
 
-**Performance:** Settling time of approximately 5.3 s with steady-state voltage constrained to $2.48V – 2.52 V$.
+**Performance:**  
+
+* Settling time of approximately $5.3s$ with steady-state voltage constrained to $2.48V – 2.52 V$, with the average of voltage in the last $5s$ (accounting for the initial overshoot) constricted within $+0.05V$ of the setpoint— $2.5V$.  
+
+* Settling time of approximately $1.2s$ with instantenous voltage contained within $+0.05V$ of the setpoint— $2.5V$.
 
 **Justification:** The large ratio $K_i / K_p$ enabled rapid convergence without overshoot, while the Kalman filter provided a low-noise state estimate for feedback.
 
@@ -93,30 +97,6 @@ A central contribution of this work is a sequence of **six controlled experiment
 **Observation:** Further increase in integral gain produced low-frequency limit cycling.
 
 **Conclusion:** The system is delay-limited. Combined serial, execution, and scheduling latency impose a phase-margin ceiling; increasing gain beyond this point drives the phase lag beyond $-180^\circ$ at crossover, inducing instability.
-
-A central component of this work is a sequence of **five controlled experimental trials**, each modifying a single design parameter while holding others fixed. This methodology was adopted to isolate the influence of model assumptions and controller gains on closed-loop behavior.
-
-### Trial 1: Initial Time-Constant Assumption
-
-The system was initially modeled as a first-order process with a fast time constant $\tau = 0.05,\text{s}$. Under this assumption, the Kalman filter and PID controller consistently rejected valid measurements, resulting in estimator divergence and actuator saturation.
-
-### Trial 2: Revised Time-Constant Identification
-
-Empirical observation revealed substantially slower effective dynamics due to thermal effects, firmware averaging, and HIL latency. Revising the model to $\tau = 0.5,\text{s}$ restored estimator consistency but exposed oscillatory behavior under aggressive proportional control.
-
-### Trial 3: Proportional Gain Reduction
-
-Reducing the proportional gain improved stability but introduced long settling times and steady-state bias, indicating that proportional action alone was insufficient to overcome persistent disturbances.
-
-### Trial 4: Integral-Dominant Control
-
-Integral gain was increased while proportional gain was further reduced. This configuration significantly improved convergence and bias rejection but revealed sensitivity to measurement noise when derivative action was present.
-
-### Trial 5: Derivative Elimination and Final Tuning
-
-Removing derivative action eliminated high-frequency control jitter. Final tuning yielded gains $(K_p, K_i, K_d) = (-28, -120, 0)$, which produced rapid convergence, low noise amplification, and near-zero steady-state error. This trial represents the final optimized configuration used for evaluation.
-
-These trials collectively demonstrate that controller structure and estimator tuning must be co-designed through experimental iteration in noise-dominated systems.
 
 ---
 

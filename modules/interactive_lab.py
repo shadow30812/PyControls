@@ -4,9 +4,9 @@ from collections import deque
 
 import matplotlib.pyplot as plt
 import numpy as np
+
 from core.control_utils import PIDController
 from helpers.config import BATTERY_PID, THERMISTOR_PID
-
 from modules.physics_engine import (
     dc_motor_dynamics,
     pendulum_dynamics,

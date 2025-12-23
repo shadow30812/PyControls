@@ -418,8 +418,6 @@ class TestAdvancedControl(unittest.TestCase):
 
         self.assertLess(elapsed, 1.0)
 
-    
-
 
 if __name__ == "__main__":
     unittest.main()

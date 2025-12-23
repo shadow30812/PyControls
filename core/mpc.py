@@ -222,7 +222,7 @@ class ModelPredictiveControl:
 
                 V_x = Q_x + self._K[i].T @ Q_uu @ self._k[i]
                 V_xx = Q_xx + self._K[i].T @ Q_uu @ self._K[i]
-            
+
             max_k_delta = np.max(np.abs(self._k - prev_k))
             self._prev_k_norm = np.mean(np.abs(self._k))
 
