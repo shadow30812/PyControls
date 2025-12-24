@@ -37,8 +37,8 @@ THERMISTOR_PARAMS = {
 
 THERMISTOR_PID = {
     "Kp": 20.0,
-    "Ki": 1.5,
-    "Kd": 5.0,
+    "Ki": 60.0,
+    "Kd": 0.0,
     "output_limits": (0, 255),
     "integral_limits": (-50, 50),
 }
