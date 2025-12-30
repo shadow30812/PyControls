@@ -1,4 +1,7 @@
+from typing import Any, Callable, Optional, Union
+
 import numpy as np
+from numpy.typing import ArrayLike, NDArray
 
 
 class ExtendedKalmanFilter:
@@ -11,7 +14,15 @@ class ExtendedKalmanFilter:
     - Designed for simultaneous state and parameter estimation.
     """
 
-    def __init__(self, f_dynamics, h_measurement, Q, R, x0, p_init_scale=0.1):
+    def __init__(
+        self,
+        f_dynamics: Callable[..., NDArray[np.complex128]],
+        h_measurement: Callable[[NDArray[Any]], NDArray[np.complex128]],
+        Q: ArrayLike,
+        R: ArrayLike,
+        x0: NDArray,
+        p_init_scale: float = 0.1,
+    ) -> None:
         """
         Initializes the EKF.
 
@@ -23,18 +34,24 @@ class ExtendedKalmanFilter:
             x0: Initial state vector (n x 1).
             p_init_scale: Scalar multiplier for the initial identity P matrix.
         """
-        self.f = f_dynamics
-        self.h = h_measurement
-        self.Q = np.array(Q, dtype=float)
-        self.R = np.array(R, dtype=float)
+        self.f: Callable[..., NDArray[np.complex128]] = f_dynamics
+        self.h: Callable[[NDArray[Any]], NDArray[np.complex128]] = h_measurement
+        self.Q: NDArray[np.float64] = np.array(Q, dtype=float)
+        self.R: NDArray[np.float64] = np.array(R, dtype=float)
 
-        self.x_hat = np.array(x0, dtype=float).reshape(-1, 1)
-        self.P = np.eye(len(x0)) * p_init_scale
-        self.n = len(x0)
+        self.x_hat: NDArray[np.float64] = np.array(x0, dtype=float).reshape(-1, 1)
+        self.P: NDArray[np.float64] = np.eye(len(x0)) * p_init_scale
+        self.n: int = len(x0)
 
-        self._I_complex = np.eye(self.n, dtype=complex)
+        self._I_complex: NDArray[np.complex128] = np.eye(self.n, dtype=complex)
 
-    def compute_jacobian(self, func, x, u=None, epsilon=1e-20):
+    def compute_jacobian(
+        self,
+        func: Callable[..., NDArray[np.complex128]],
+        x: NDArray[np.float64],
+        u: Optional[Union[float, NDArray[np.float64]]] = None,
+        epsilon: float = 1e-20,
+    ) -> NDArray[np.float64]:
         """
         Computes the Jacobian matrix using Vectorized Complex Step Differentiation.
 
@@ -43,92 +60,86 @@ class ExtendedKalmanFilter:
 
         Formula: J = Im[f(x + i*h*e_j)] / h
         """
-        n_in = x.shape[0]
+        n_in: int = x.shape[0]
 
         if self._I_complex.shape[0] != n_in:
             self._I_complex = np.eye(n_in, dtype=complex)
 
-        x_complex = x.astype(complex)
-        X_perturb = x_complex + 1j * epsilon * self._I_complex
+        x_complex: NDArray[np.complex128] = x.astype(complex)
+        X_perturb: NDArray[np.complex128] = x_complex + 1j * epsilon * self._I_complex
 
         try:
-            try:
-                if u is not None:
-                    Y_perturb = func(X_perturb, u)
-                else:
-                    Y_perturb = func(X_perturb)
+            if u is not None:
+                Y_perturb: NDArray[np.complex128] = func(X_perturb, u)
+            else:
+                Y_perturb: NDArray[np.complex128] = func(X_perturb)
 
-                J = Y_perturb.imag / epsilon
-                return J
-
-            except Exception as e:
-                print(
-                    "Error in core/ekf/ExtendedKalmanFilter/compute_jacobian",
-                    e,
-                    sep="\n",
-                )
+            J: NDArray[np.float64] = Y_perturb.imag / epsilon
+            return J
 
         except (TypeError, ValueError, AttributeError):
-            x_perturb = x_complex.copy()
+            x_perturb: NDArray[np.complex128] = x_complex.copy()
             x_perturb[0] += 1j * epsilon
 
             if u is not None:
-                y0 = func(x_perturb, u)
+                y0: NDArray[np.complex128] = func(x_perturb, u)
             else:
-                y0 = func(x_perturb)
+                y0: NDArray[np.complex128] = func(x_perturb)
 
-            n_out = len(y0)
-            J = np.zeros((n_out, n_in))
+            n_out: int = len(y0)
+            J: NDArray[np.float64] = np.zeros((n_out, n_in))
 
             J[:, 0] = y0.imag.flatten() / epsilon
 
-            for j in range(1, n_in):
+            for i in range(1, n_in):
                 x_perturb = x_complex.copy()
-                x_perturb[j] += 1j * epsilon
+                x_perturb[i] += 1j * epsilon
 
                 if u is not None:
-                    val = func(x_perturb, u)
+                    val: NDArray[np.complex128] = func(x_perturb, u)
                 else:
-                    val = func(x_perturb)
+                    val: NDArray[np.complex128] = func(x_perturb)
 
-                J[:, j] = val.imag.flatten() / epsilon
+                J[:, i] = val.imag.flatten() / epsilon
 
             return J
 
-    def predict(self, u, dt):
+    def predict(self, u: Union[float, NDArray[np.float64]], dt: float) -> None:
         """
         Performs the Time Update (Prediction) step.
         """
-        x_dot = self.f(self.x_hat.astype(complex), u).real
-        self.x_pred = self.x_hat + x_dot * dt
+        x_dot: NDArray[np.float64] = self.f(self.x_hat.astype(complex), u).real
+        self.x_pred: NDArray[np.float64] = self.x_hat + x_dot * dt
 
-        A_c = self.compute_jacobian(self.f, self.x_hat, u)
-        F = np.eye(self.n) + A_c * dt
+        A_c: NDArray[np.float64] = self.compute_jacobian(self.f, self.x_hat, u)
+        F: NDArray[np.float64] = np.eye(self.n) + A_c * dt
 
         self.P = F @ self.P @ F.T + self.Q
 
-    def update(self, y_meas):
+    def update(self, y_meas: NDArray[np.float64]) -> NDArray[np.float64]:
         """
         Performs the Measurement Update (Correction) step.
         """
-        H = self.compute_jacobian(lambda x: self.h(x), self.x_hat, u=None)
+        H: NDArray[np.float64] = self.compute_jacobian(
+            lambda x: self.h(x), self.x_hat, u=None
+        )
 
-        y_pred = self.h(self.x_pred).real
-        y_err = y_meas - y_pred
+        y_pred: NDArray[np.float64] = self.h(self.x_pred).real
+        y_err: NDArray[np.float64] = y_meas - y_pred
 
-        S = H @ self.P @ H.T + self.R
+        S: NDArray[np.float64] = H @ self.P @ H.T + self.R
 
         try:
-            K = self.P @ H.T @ np.linalg.inv(S)
+            K: NDArray[np.float64] = self.P @ H.T @ np.linalg.inv(S)
         except np.linalg.LinAlgError:
             print(
                 "Np LinAlg error in core/ekf/ExtendedKalmanFilter/update",
             )
-            K = np.zeros((self.n, y_meas.shape[0]))
+            K: NDArray[np.float64] = np.zeros((self.n, y_meas.shape[0]))
 
         self.x_hat = self.x_pred + K @ y_err
 
-        I = np.eye(self.n)
+        I: NDArray[np.float64] = np.eye(self.n)
         self.P = (I - K @ H) @ self.P
 
         return self.x_hat.flatten()

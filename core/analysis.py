@@ -1,24 +1,29 @@
 from math import inf
+from typing import Any, Callable, Tuple
 
 import numpy as np
+from numpy.typing import NDArray
 
 from core.math_utils import Root
+from core.transfer_function import TransferFunction
 
 try:
     from numba import njit
 
-    NUMBA_AVAILABLE = True
+    NUMBA_AVAILABLE: bool = True
 except ImportError:
-    NUMBA_AVAILABLE = False
+    NUMBA_AVAILABLE: bool = False
 
-    def njit(*args, **kwargs):
-        def decorator(func):
+    def njit(*args, **kwargs) -> Callable[..., Any]:
+        def decorator(func) -> Any:
             return func
 
         return decorator
 
 
-def get_stability_margins(tf, w_start=-2, w_end=5):
+def get_stability_margins(
+    tf: TransferFunction, w_start: int = -2, w_end: int = 5
+) -> Tuple[float, float, float, float]:
     """
     Calculates Gain Margin and Phase Margin of a Transfer Function.
 
@@ -34,25 +39,25 @@ def get_stability_margins(tf, w_start=-2, w_end=5):
         tuple: (Gain Margin, Phase Margin, Phase Crossover Freq, Gain Crossover Freq)
     """
 
-    w = np.logspace(w_start, w_end, 200)
-    s = 1j * w
-    resp = np.array([tf.evaluate(si) for si in s])
+    w: NDArray[np.float64] = np.logspace(w_start, w_end, 200)
+    s: NDArray[np.complexfloating] = 1j * w
+    resp: NDArray[np.complex128] = np.array([tf.evaluate(si) for si in s])
 
-    mag_db = 20 * np.log10(np.abs(resp))
-    phase = np.angle(resp, deg=True)
+    mag_db: NDArray[np.float64] = 20 * np.log10(np.abs(resp))
+    phase: NDArray[np.floating] = np.angle(resp, deg=True)
     phase = (phase + 180) % 360 - 180
 
-    w_pc = 0.0
-    phase_shifted = phase + 180
-    sign_change = np.where(
+    w_pc: float = 0.0
+    phase_shifted: NDArray[np.floating] = phase + 180
+    sign_change: NDArray[np.intp] = np.where(
         np.signbit(phase_shifted[:-1]) != np.signbit(phase_shifted[1:])
     )[0]
 
     if sign_change.size > 0:
-        i = sign_change[0]
+        i: int = sign_change[0]
         try:
             w_pc = Root().find_root(
-                lambda x: np.angle(tf.evaluate(1j * x), deg=True) + 180,
+                lambda x: float(np.angle(tf.evaluate(1j * x), deg=True) + 180),
                 w[i],
                 w[i + 1],
             )
@@ -64,18 +69,18 @@ def get_stability_margins(tf, w_start=-2, w_end=5):
                 sep="\n",
             )
 
-    gain_margin = inf
+    gain_margin: float = inf
     if w_pc > 0:
-        gain_margin = -20 * np.log10(abs(tf.evaluate(1j * w_pc)))
+        gain_margin = -20 * float(np.log10(abs(tf.evaluate(1j * w_pc))))
 
-    w_gc = 0.0
+    w_gc: float = 0.0
     sign_change = np.where(np.signbit(mag_db[:-1]) != np.signbit(mag_db[1:]))[0]
 
     if sign_change.size > 0:
         i = sign_change[0]
         try:
             w_gc = Root().find_root(
-                lambda x: 20 * np.log10(abs(tf.evaluate(1j * x))),
+                lambda x: 20 * float(np.log10(abs(tf.evaluate(1j * x)))),
                 w[i],
                 w[i + 1],
             )
@@ -87,9 +92,9 @@ def get_stability_margins(tf, w_start=-2, w_end=5):
                 sep="\n",
             )
 
-    phase_margin = inf
+    phase_margin: float = inf
     if w_gc > 0:
-        phase_at_gc = np.angle(tf.evaluate(1j * w_gc), deg=True)
+        phase_at_gc: float = float(np.angle(tf.evaluate(1j * w_gc), deg=True))
         phase_at_gc = (phase_at_gc + 180) % 360 - 180
         phase_margin = 180 + phase_at_gc
 
@@ -97,7 +102,9 @@ def get_stability_margins(tf, w_start=-2, w_end=5):
 
 
 @njit
-def get_exact_time_idx(time, response, target_val):
+def get_exact_time_idx(
+    time: NDArray[np.float64], response: NDArray[np.float64], target_val: float
+) -> float:
     """
     Finds the exact time t where response[t] crosses target_val using linear interpolation.
     """
@@ -113,25 +120,27 @@ def get_exact_time_idx(time, response, target_val):
     return 0.0
 
 
-def get_step_metrics(time, response):
+def get_step_metrics(
+    time: NDArray[np.float64], response: NDArray[np.float64]
+) -> Tuple[float, float, float]:
     """
     Computes standard step response metrics: Rise Time, Overshoot, Settling Time.
     """
-    final_val = response[-1]
+    final_val: float = response[-1]
     if final_val == 0:
         return 0, 0, 0
 
-    t_10 = get_exact_time_idx(time, response, 0.1 * final_val)
-    t_90 = get_exact_time_idx(time, response, 0.9 * final_val)
-    rise_time = max(0.0, t_90 - t_10)
+    t_10: float = get_exact_time_idx(time, response, 0.1 * final_val)
+    t_90: float = get_exact_time_idx(time, response, 0.9 * final_val)
+    rise_time: float = max(0.0, t_90 - t_10)
 
-    peak_val = np.max(response)
-    overshoot = max(0.0, (peak_val - final_val) * 100 / final_val)
+    peak_val: float = np.max(response)
+    overshoot: float = max(0.0, (peak_val - final_val) * 100 / final_val)
 
-    upper = final_val * 1.02
-    lower = final_val * 0.98
+    upper: float = final_val * 1.02
+    lower: float = final_val * 0.98
 
-    settling_time = 0.0
+    settling_time: float = 0.0
     for i in range(len(response) - 1, -1, -1):
         if response[i] > upper or response[i] < lower:
             if i + 1 < len(time):

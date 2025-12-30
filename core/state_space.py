@@ -1,4 +1,7 @@
+from typing import Tuple
+
 import numpy as np
+from numpy.typing import ArrayLike, NDArray
 
 from core.exceptions import DimensionMismatchError
 
@@ -24,7 +27,13 @@ class StateSpace:
         n_outputs (int): Number of measurement outputs.
     """
 
-    def __init__(self, A, B, C, D):
+    def __init__(
+        self,
+        A: ArrayLike,
+        B: ArrayLike,
+        C: ArrayLike,
+        D: ArrayLike,
+    ) -> None:
         """
         Initializes the StateSpace system and validates matrix dimensions.
 
@@ -38,14 +47,14 @@ class StateSpace:
             DimensionMismatchError: If the matrix dimensions are inconsistent with
             each other (e.g., if A is not square, or B/C/D do not match the state dimension).
         """
-        self.A = np.array(A, dtype=float)
-        self.B = np.array(B, dtype=float)
-        self.C = np.array(C, dtype=float)
-        self.D = np.array(D, dtype=float)
+        self.A: NDArray[np.float64] = np.array(A, dtype=float)
+        self.B: NDArray[np.float64] = np.array(B, dtype=float)
+        self.C: NDArray[np.float64] = np.array(C, dtype=float)
+        self.D: NDArray[np.float64] = np.array(D, dtype=float)
 
-        self.n_states = self.A.shape[0]
-        self.n_inputs = self.B.shape[1]
-        self.n_outputs = self.C.shape[0]
+        self.n_states: int = self.A.shape[0]
+        self.n_inputs: int = self.B.shape[1]
+        self.n_outputs: int = self.C.shape[0]
 
         if self.A.shape != (self.n_states, self.n_states):
             raise DimensionMismatchError(f"A must be square, got {self.A.shape}")
@@ -65,9 +74,11 @@ class StateSpace:
                 f"D must match outputs/inputs, got {self.D.shape} (expected {self.n_outputs}x{self.n_inputs})"
             )
 
-        self._I = np.eye(self.n_states)
+        self._I: NDArray[np.float64] = np.eye(self.n_states)
 
-    def get_frequency_response(self, omega_range, input_idx=0, output_idx=0):
+    def get_frequency_response(
+        self, omega_range: ArrayLike, input_idx: int = 0, output_idx: int = 0
+    ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
         """
         Computes the frequency response H(jw) directly from state-space matrices
         for a specific input-output pair over a range of frequencies.
@@ -97,19 +108,21 @@ class StateSpace:
         if not (0 <= output_idx < self.n_outputs):
             raise ValueError(f"Invalid output_idx {output_idx}")
 
-        omega = np.asarray(omega_range)
-        mags = np.empty_like(omega, dtype=float)
-        phases = np.empty_like(omega, dtype=float)
+        omega: NDArray[np.float64] = np.asarray(omega_range)
+        mags: NDArray[np.float64] = np.empty_like(omega, dtype=float)
+        phases: NDArray[np.float64] = np.empty_like(omega, dtype=float)
 
-        B_j = self.B[:, input_idx : input_idx + 1]
-        C_i = self.C[output_idx : output_idx + 1, :]
-        D_ij = self.D[output_idx, input_idx]
+        B_j: NDArray[np.float64] = self.B[:, input_idx : input_idx + 1]
+        C_i: NDArray[np.float64] = self.C[output_idx : output_idx + 1, :]
+        D_ij: float = self.D[output_idx, input_idx]
 
         for k, w in enumerate(omega):
-            s = 1j * w
+            s: complex = 1j * w
             try:
-                term = np.linalg.solve(s * self._I - self.A, B_j)
-                resp = (C_i @ term)[0, 0] + D_ij
+                term: NDArray[np.complexfloating] = np.linalg.solve(
+                    s * self._I - self.A, B_j
+                )
+                resp: complex = (C_i @ term)[0, 0] + D_ij
                 mags[k] = 20.0 * np.log10(np.abs(resp))
                 phases[k] = np.degrees(np.angle(resp))
             except np.linalg.LinAlgError:

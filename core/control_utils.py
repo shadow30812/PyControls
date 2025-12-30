@@ -1,7 +1,17 @@
+from typing import List, Optional, Tuple, Union
+
 import numpy as np
+from numpy.typing import ArrayLike, NDArray
 
 
-def solve_discrete_riccati(A, B, Q, R, tol=1e-8, max_iter=1000):
+def solve_discrete_riccati(
+    A: Union[ArrayLike, NDArray[np.float64]],
+    B: Union[ArrayLike, NDArray[np.float64]],
+    Q: Union[ArrayLike, NDArray[np.float64]],
+    R: Union[ArrayLike, NDArray[np.float64]],
+    tol: float = 1e-8,
+    max_iter: int = 1000,
+) -> NDArray[np.float64]:
     """
     Solves the discrete-time Algebraic Riccati Equation (DARE) via iterative convergence.
 
@@ -27,14 +37,14 @@ def solve_discrete_riccati(A, B, Q, R, tol=1e-8, max_iter=1000):
     Q = np.asarray(Q, dtype=float)
     R = np.asarray(R, dtype=float)
 
-    P = Q.copy()
+    P: NDArray[np.float64] = Q.copy()
 
     for _ in range(max_iter):
-        BT_P = B.T @ P
-        S = R + BT_P @ B
+        BT_P: NDArray[np.float64] = B.T @ P
+        S: NDArray[np.float64] = R + BT_P @ B
 
-        K = np.linalg.solve(S, BT_P @ A)
-        P_next = A.T @ P @ A - A.T @ P @ B @ K + Q
+        K: NDArray[np.floating] = np.linalg.solve(S, BT_P @ A)
+        P_next: NDArray[np.float64] = A.T @ P @ A - A.T @ P @ B @ K + Q
 
         P_next = 0.5 * (P_next + P_next.T)
 
@@ -47,7 +57,12 @@ def solve_discrete_riccati(A, B, Q, R, tol=1e-8, max_iter=1000):
     return P
 
 
-def dlqr(A, B, Q, R):
+def dlqr(
+    A: NDArray[np.float64],
+    B: NDArray[np.float64],
+    Q: NDArray[np.float64],
+    R: NDArray[np.float64],
+) -> NDArray[np.floating]:
     """
     Computes the optimal Linear Quadratic Regulator (LQR) gain for a discrete-time system.
 
@@ -64,13 +79,18 @@ def dlqr(A, B, Q, R):
     Returns:
         np.ndarray: The optimal gain matrix K.
     """
-    P = solve_discrete_riccati(A, B, Q, R)
-    BT_P = B.T @ P
+    P: NDArray[np.float64] = solve_discrete_riccati(A, B, Q, R)
+    BT_P: NDArray[np.float64] = B.T @ P
     return np.linalg.solve(R + BT_P @ B, BT_P @ A)
 
 
 class Check:
-    def _matrix_rank(self, M, atol=1e-15, rtol=None):
+    def _matrix_rank(
+        self,
+        M: Union[ArrayLike, NDArray[np.float64]],
+        atol: float = 1e-15,
+        rtol: Optional[float] = None,
+    ) -> int:
         """
         Computes the rank of a matrix using SVD with hybrid tolerance.
 
@@ -81,7 +101,7 @@ class Check:
         if M.size == 0:
             return 0
 
-        s = np.linalg.svd(M, compute_uv=False)
+        s: NDArray[np.floating] = np.linalg.svd(M, compute_uv=False)
 
         if atol is None:
             atol = max(M.shape)
@@ -89,59 +109,79 @@ class Check:
         if rtol is None:
             rtol = max(M.shape) * np.finfo(M.dtype).eps
 
-        threshold = max(atol, rtol * s[0])
+        threshold: float = max(atol, rtol * s[0])
         return int(np.sum(s > threshold))
 
-    def controllability_matrix(self, A, B):
+    def controllability_matrix(
+        self,
+        A: Union[NDArray[np.float64], ArrayLike],
+        B: Union[NDArray[np.float64], ArrayLike],
+    ) -> NDArray[np.float64]:
         """
         Constructs the controllability matrix [B, AB, A^2B, ..., A^{n-1}B].
         """
         A = np.asarray(A, dtype=float)
         B = np.asarray(B, dtype=float)
 
-        n = A.shape[0]
-        mats = [B]
+        n: int = A.shape[0]
+        mats: List[NDArray[np.float64]] = [B]
 
-        Ak = np.eye(n)
+        Ak: NDArray[np.float64] = np.eye(n)
         for _ in range(1, n):
             Ak = Ak @ A
             mats.append(Ak @ B)
 
         return np.concatenate(mats, axis=1)
 
-    def observability_matrix(self, A, C):
+    def observability_matrix(
+        self,
+        A: Union[NDArray[np.float64], ArrayLike],
+        C: Union[NDArray[np.float64], ArrayLike],
+    ) -> NDArray[np.float64]:
         """
         Constructs the observability matrix [C; CA; CA^2; ...; CA^{n-1}].
         """
         A = np.asarray(A, dtype=float)
         C = np.asarray(C, dtype=float)
 
-        n = A.shape[0]
-        mats = [C]
+        n: int = A.shape[0]
+        mats: List[NDArray[np.float64]] = [C]
 
-        Ak = np.eye(n)
+        Ak: NDArray[np.float64] = np.eye(n)
         for _ in range(1, n):
             Ak = Ak @ A
             mats.append(C @ Ak)
 
         return np.concatenate(mats, axis=0)
 
-    def is_controllable(self, A, B, atol=1e-15, rtol=None):
+    def is_controllable(
+        self,
+        A: NDArray[np.float64],
+        B: NDArray[np.float64],
+        atol: float = 1e-15,
+        rtol: Optional[float] = None,
+    ) -> bool:
         """
         Checks controllability via rank of controllability matrix.
         """
-        Ctrb = self.controllability_matrix(A, B)
-        n = A.shape[0]
-        rank = self._matrix_rank(Ctrb, atol=atol, rtol=rtol)
+        Ctrb: NDArray[np.float64] = self.controllability_matrix(A, B)
+        n: int = A.shape[0]
+        rank: int = self._matrix_rank(Ctrb, atol=atol, rtol=rtol)
         return rank == n
 
-    def is_observable(self, A, C, atol=1e-15, rtol=None):
+    def is_observable(
+        self,
+        A: NDArray[np.float64],
+        C: NDArray[np.float64],
+        atol: float = 1e-15,
+        rtol: Optional[float] = None,
+    ) -> bool:
         """
         Checks observability via rank of observability matrix.
         """
-        Obsv = self.observability_matrix(A, C)
-        n = A.shape[0]
-        rank = self._matrix_rank(Obsv, atol=atol, rtol=rtol)
+        Obsv: NDArray[np.float64] = self.observability_matrix(A, C)
+        n: int = A.shape[0]
+        rank: int = self._matrix_rank(Obsv, atol=atol, rtol=rtol)
         return rank == n
 
 
@@ -172,38 +212,37 @@ class PIDController:
 
     def __init__(
         self,
-        Kp,
-        Ki,
-        Kd,
-        derivative_on_measurement=True,
-        output_limits=(None, None),
-        integral_limits=(None, None),
-        tau=0.02,
-    ):
-        self.Kp = float(Kp)
-        self.Ki = float(Ki)
-        self.Kd = float(Kd)
+        Kp: int | float,
+        Ki: int | float,
+        Kd: int | float,
+        derivative_on_measurement: bool = True,
+        output_limits: Tuple[Optional[float], Optional[float]] = (None, None),
+        integral_limits: Tuple[Optional[float], Optional[float]] = (None, None),
+        tau: int | float = 0.02,
+    ) -> None:
+        self.Kp: float = float(Kp)
+        self.Ki: float = float(Ki)
+        self.Kd: float = float(Kd)
 
-        self.derivative_on_measurement = derivative_on_measurement
+        self.derivative_on_measurement: bool = derivative_on_measurement
         self.min_out, self.max_out = output_limits
         self.min_int, self.max_int = integral_limits
 
-        self.tau = float(tau)
-
+        self.tau: float = float(tau)
         self.reset()
 
-    def reset(self):
+    def reset(self) -> None:
         """
         Resets the controller's internal state.
 
         Clears the accumulated integral error and resets the previous values used
         for derivative calculations to zero.
         """
-        self.integral_error = 0.0
-        self.prev_value = 0.0
-        self.prev_derivative = 0.0
+        self.integral_error: float = 0.0
+        self.prev_value: float = 0.0
+        self.prev_derivative: float = 0.0
 
-    def update(self, measurement, setpoint, dt):
+    def update(self, measurement: float, setpoint: float, dt: float) -> float:
         """
         Calculates the control output based on the current measurement and setpoint.
 
@@ -225,10 +264,10 @@ class PIDController:
         if dt <= 0.0:
             return 0.0
 
-        error = setpoint - measurement
+        error: float = setpoint - measurement
         self.integral_error += error * dt
 
-        new_integral = self.integral_error
+        new_integral: float = self.integral_error
         if self.min_int is not None:
             new_integral = max(self.min_int, new_integral)
         if self.max_int is not None:
@@ -236,19 +275,21 @@ class PIDController:
         self.integral_error = new_integral
 
         if self.derivative_on_measurement:
-            raw_derivative = (measurement - self.prev_value) / dt
+            raw_derivative: float = (measurement - self.prev_value) / dt
             self.prev_value = measurement
-            sign = -1.0
+            sign: float = -1.0
         else:
             raw_derivative = (error - self.prev_value) / dt
             self.prev_value = error
             sign = 1.0
 
-        alpha = dt / (self.tau + dt)
-        derivative = alpha * raw_derivative + (1.0 - alpha) * self.prev_derivative
+        alpha: float = dt / (self.tau + dt)
+        derivative: float = (
+            alpha * raw_derivative + (1.0 - alpha) * self.prev_derivative
+        )
         self.prev_derivative = derivative
 
-        u = (
+        u: float = (
             self.Kp * error
             + self.Ki * self.integral_error
             + sign * self.Kd * derivative
