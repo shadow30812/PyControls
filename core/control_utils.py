@@ -212,13 +212,13 @@ class PIDController:
 
     def __init__(
         self,
-        Kp: int | float,
-        Ki: int | float,
-        Kd: int | float,
+        Kp: Union[int, float],
+        Ki: Union[int, float],
+        Kd: Union[int, float],
         derivative_on_measurement: bool = True,
         output_limits: Tuple[Optional[float], Optional[float]] = (None, None),
         integral_limits: Tuple[Optional[float], Optional[float]] = (None, None),
-        tau: int | float = 0.02,
+        tau: Union[int, float] = 0.02,
     ) -> None:
         self.Kp: float = float(Kp)
         self.Ki: float = float(Ki)

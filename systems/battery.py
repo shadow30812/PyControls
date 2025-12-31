@@ -1,19 +1,22 @@
+from typing import Any, Dict, Final, Optional
+
 import numpy as np
 import serial
+from numpy.typing import NDArray
 
 from core.state_space import StateSpace
 from helpers.config import BATTERY_PARAMS
 
 
 class Battery:
-    def __init__(self, **kwargs):
-        self.params = BATTERY_PARAMS.copy()
+    def __init__(self, **kwargs: Any) -> None:
+        self.params: Dict[str, Any] = BATTERY_PARAMS.copy()
         if kwargs:
             self.params.update(kwargs)
-        self.ser = None
-        self.current_voltage = 0.0
+        self.ser: Optional[serial.Serial] = None
+        self.current_voltage: float = 0.0
 
-    def connect(self):
+    def connect(self) -> None:
         try:
             self.ser = serial.Serial(
                 self.params["port"], self.params["baud"], timeout=0.1
@@ -27,20 +30,20 @@ class Battery:
             print("          -> Running in DUMMY MODE (Reads will be 0.0V)")
             self.ser = None
 
-    def write_pwm(self, val):
+    def write_pwm(self, val: float) -> None:
         if self.ser:
-            pwm = int(np.clip(val, 0, 255))
+            pwm: int = int(np.clip(val, 0, 255))
             self.ser.write(f"Q:{int(pwm)}\n".encode())
 
-    def read_voltage(self):
+    def read_voltage(self) -> float:
         if not self.ser:
             return self.current_voltage
 
         while self.ser.in_waiting:
             try:
-                line = self.ser.readline().decode().strip()
+                line: str = self.ser.readline().decode().strip()
                 if line.startswith("A:"):
-                    adc = int(line[2:])
+                    adc: int = int(line[2:])
                     if adc >= 1023:
                         return 5.0
                     elif adc <= 0:
@@ -51,16 +54,16 @@ class Battery:
 
         return self.current_voltage
 
-    def get_state_space(self):
-        tau = 0.5
-        G = -5.0 / 255
+    def get_state_space(self) -> StateSpace:
+        tau: Final[float] = 0.5
+        G: Final[float] = -5.0 / 255
 
-        A = np.array([[-1.0 / tau]])
-        B = np.array([[G / tau]])
-        C = np.array([[1.0]])
-        D = np.array([[0.0]])
+        A: NDArray[np.float64] = np.array([[-1.0 / tau]])
+        B: NDArray[np.float64] = np.array([[G / tau]])
+        C: NDArray[np.float64] = np.array([[1.0]])
+        D: NDArray[np.float64] = np.array([[0.0]])
         return StateSpace(A, B, C, D)
 
-    def close(self):
+    def close(self) -> None:
         if self.ser:
             self.ser.close()

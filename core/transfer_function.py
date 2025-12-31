@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from typing import Any, Tuple, Union
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -23,11 +23,11 @@ class TransferFunction:
         return f"TF(Num={self.repr_num}, Den={self.repr_den})"
 
     def evaluate(
-        self, s: Union[complex, float, NDArray]
-    ) -> NDArray[np.float64] | float:
+        self, s: Union[complex, float, NDArray[Any]]
+    ) -> Union[NDArray[np.float64], float]:
         """Evaluates G(s) at a complex number s using Horner's method (via np.polyval)."""
-        n_val: Union[complex, float, NDArray] = np.polyval(self.num, s)
-        d_val: Union[complex, float, NDArray] = np.polyval(self.den, s)
+        n_val: Union[complex, float, NDArray[Any]] = np.polyval(self.num, s)
+        d_val: Union[complex, float, NDArray[Any]] = np.polyval(self.den, s)
         return n_val / d_val if d_val != 0 else np.inf
 
     def bode_response(
@@ -40,7 +40,7 @@ class TransferFunction:
 
         for k, w in enumerate(omega):
             s: complex = 1j * w
-            resp: Union[complex, float, NDArray] = self.evaluate(s)
+            resp: Union[complex, float, NDArray[Any]] = self.evaluate(s)
             mags[k] = 20.0 * np.log10(np.abs(resp))
             phases[k] = np.degrees(np.angle(resp))
 
@@ -52,7 +52,7 @@ class TransferFunction:
         NDArray[np.float64],
         NDArray[np.float64],
         NDArray[np.float64],
-        NDArray[np.float64] | int,
+        Union[NDArray[np.float64], int],
     ]:
         """
         Converts the SISO Transfer Function to State-Space Control Canonical Form.

@@ -20,7 +20,7 @@ class ExtendedKalmanFilter:
         h_measurement: Callable[[NDArray[Any]], NDArray[np.complex128]],
         Q: ArrayLike,
         R: ArrayLike,
-        x0: NDArray,
+        x0: NDArray[Any],
         p_init_scale: float = 0.1,
     ) -> None:
         """

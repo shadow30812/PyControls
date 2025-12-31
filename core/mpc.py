@@ -27,15 +27,15 @@ class ModelPredictiveControl:
                 NDArray[np.float64],
             ]
         ] = None,
-        x0: Optional[NDArray] = None,
+        x0: Optional[NDArray[Any]] = None,
         horizon: int = 10,
         dt: float = 0.1,
         Q: Optional[ArrayLike] = None,
         R: Optional[ArrayLike] = None,
         u_min: Union[float, NDArray[np.float64]] = -10,
         u_max: Union[float, NDArray[np.float64]] = 10,
-        A: Optional[NDArray] = None,
-        B: Optional[NDArray] = None,
+        A: Optional[NDArray[Any]] = None,
+        B: Optional[NDArray[Any]] = None,
     ) -> None:
         """
         Args:

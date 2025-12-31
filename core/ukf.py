@@ -1,4 +1,4 @@
-from typing import Callable, Final, Union
+from typing import Any, Callable, Final, Union
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -109,7 +109,7 @@ class UnscentedKalmanFilter:
         self.P = P_pred
         self.sigmas_f = self.sigmas_h
 
-    def update(self, z: Union[ArrayLike, NDArray]) -> NDArray[np.float64]:
+    def update(self, z: Union[ArrayLike, NDArray[Any]]) -> NDArray[np.float64]:
         """
         Measurement Update Step: Maps sigma points to measurement space.
         """

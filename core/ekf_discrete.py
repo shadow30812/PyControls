@@ -1,4 +1,4 @@
-from typing import Callable, Final, Optional, Union
+from typing import Any, Callable, Final, Optional, Union
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -44,7 +44,7 @@ class DiscreteExtendedKalmanFilter:
         self.x = Phi @ self.x
         self.P = Phi @ self.P @ Phi.T + self.Q
 
-    def update(self, y: Union[ArrayLike, NDArray]) -> None:
+    def update(self, y: Union[ArrayLike, NDArray[Any]]) -> None:
         y = np.atleast_2d(y).T
         x_flat: NDArray[np.float64] = self.x.flatten()
 

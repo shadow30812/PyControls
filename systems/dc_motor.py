@@ -1,4 +1,7 @@
+from typing import Any, Callable, Dict, Final, List, Tuple, Union
+
 import numpy as np
+from numpy.typing import NDArray
 
 from core.solver import manual_matrix_exp
 from core.state_space import StateSpace
@@ -20,13 +23,15 @@ except ImportError:
 
 
 @njit(cache=True)
-def _dc_motor_linear_matrices(J, b, K, R, L):
-    A = np.array(
+def _dc_motor_linear_matrices(
+    J: float, b: float, K: float, R: float, L: float
+) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
+    A: NDArray[np.float64] = np.array(
         [[-b / J, K / J], [-K / L, -R / L]],
         dtype=np.float64,
     )
 
-    B = np.array(
+    B: NDArray[np.float64] = np.array(
         [[0.0, -1.0 / J], [1.0 / L, 0.0]],
         dtype=np.float64,
     )
@@ -34,15 +39,17 @@ def _dc_motor_linear_matrices(J, b, K, R, L):
 
 
 @njit(cache=True)
-def _motor_param_estimation_step(x, voltage, K, R, L):
-    omega = x[0]
-    i = x[1]
+def _motor_param_estimation_step(
+    x: NDArray[Any], voltage: float, K: float, R: float, L: float
+) -> Tuple[Union[float, complex], Union[float, complex]]:
+    omega: Union[float, complex] = x[0]
+    i: Union[float, complex] = x[1]
 
-    J_est = np.exp(x[2])
-    b_est = np.exp(x[3])
+    J_est: Union[float, complex] = np.exp(x[2])
+    b_est: Union[float, complex] = np.exp(x[3])
 
-    dw_dt = (K * i - b_est * omega) / J_est
-    di_dt = (voltage - R * i - K * omega) / L
+    dw_dt: Union[float, complex] = (K * i - b_est * omega) / J_est
+    di_dt: Union[float, complex] = (voltage - R * i - K * omega) / L
 
     return dw_dt, di_dt
 
@@ -65,18 +72,18 @@ class DCMotor:
 
     def __init__(
         self,
-        J=DC_MOTOR_DEFAULTS["J"],
-        b=DC_MOTOR_DEFAULTS["b"],
-        K=DC_MOTOR_DEFAULTS["K"],
-        R=DC_MOTOR_DEFAULTS["R"],
-        L=DC_MOTOR_DEFAULTS["L"],
-    ):
+        J: float = DC_MOTOR_DEFAULTS["J"],
+        b: float = DC_MOTOR_DEFAULTS["b"],
+        K: float = DC_MOTOR_DEFAULTS["K"],
+        R: float = DC_MOTOR_DEFAULTS["R"],
+        L: float = DC_MOTOR_DEFAULTS["L"],
+    ) -> None:
         """
         Initializes the DC Motor model with the specified physical parameters.
         """
-        self.params = {"J": J, "b": b, "K": K, "R": R, "L": L}
+        self.params: Dict[str, float] = {"J": J, "b": b, "K": K, "R": R, "L": L}
 
-    def get_open_loop_tf(self, Kp, Ki, Kd):
+    def get_open_loop_tf(self, Kp: float, Ki: float, Kd: float) -> TransferFunction:
         """
         Derives the Open-Loop Transfer Function L(s) = C(s) * P(s).
 
@@ -98,18 +105,18 @@ class DCMotor:
         """
         J, b, K, R, L = self.params.values()
 
-        p_num = [K]
-        p_den = [J * L, (J * R + b * L), (b * R + K**2)]
+        p_num: List[float] = [K]
+        p_den: List[float] = [J * L, (J * R + b * L), (b * R + K**2)]
 
-        c_num = [Kd, Kp, Ki]
-        c_den = [1, 0]
+        c_num: List[float] = [Kd, Kp, Ki]
+        c_den: List[float] = [1, 0]
 
-        num = np.convolve(c_num, p_num)
-        den = np.convolve(c_den, p_den)
+        num: NDArray[np.floating] = np.convolve(c_num, p_num)
+        den: NDArray[np.floating] = np.convolve(c_den, p_den)
 
         return TransferFunction(num, den)
 
-    def get_closed_loop_tf(self, Kp, Ki, Kd):
+    def get_closed_loop_tf(self, Kp: float, Ki: float, Kd: float) -> TransferFunction:
         """
         Derives the Closed-Loop Transfer Function T(s) for a PID-controlled system.
 
@@ -129,26 +136,26 @@ class DCMotor:
         """
         J, b, K, R, L = self.params.values()
 
-        p_num = [K]
-        p_den = [J * L, (J * R + b * L), (b * R + K**2)]
+        p_num: List[float] = [K]
+        p_den: List[float] = [J * L, (J * R + b * L), (b * R + K**2)]
 
-        c_num = [Kd, Kp, Ki]
-        c_den = [1, 0]
+        c_num: List[float] = [Kd, Kp, Ki]
+        c_den: List[float] = [1, 0]
 
-        num = np.convolve(c_num, p_num)
-        term1 = np.convolve(c_den, p_den)
-        term2 = np.convolve(c_num, p_num)
+        num: NDArray[np.floating] = np.convolve(c_num, p_num)
+        term1: NDArray[np.floating] = np.convolve(c_den, p_den)
+        term2: NDArray[np.floating] = np.convolve(c_num, p_num)
 
-        diff = len(term1) - len(term2)
+        diff: int = len(term1) - len(term2)
         if diff > 0:
             term2 = np.pad(term2, (diff, 0), "constant")
         elif diff < 0:
             term1 = np.pad(term1, (-diff, 0), "constant")
 
-        den = term1 + term2
+        den: NDArray[np.floating] = term1 + term2
         return TransferFunction(num, den)
 
-    def get_disturbance_tf(self, Kp, Ki, Kd):
+    def get_disturbance_tf(self, Kp: float, Ki: float, Kd: float) -> TransferFunction:
         """
         Derives the Disturbance Transfer Function Td(s) for load torque rejection.
 
@@ -168,29 +175,29 @@ class DCMotor:
         """
         J, b, K, R, L = self.params.values()
 
-        p_den = [J * L, (J * R + b * L), (b * R + K**2)]
-        p_num = [K]
+        p_den: List[float] = [J * L, (J * R + b * L), (b * R + K**2)]
+        p_num: List[float] = [K]
 
-        c_num = [Kd, Kp, Ki]
-        c_den = [1, 0]
+        c_num: List[float] = [Kd, Kp, Ki]
+        c_den: List[float] = [1, 0]
 
-        g_load_num = [-L, -R]
+        g_load_num: List[float] = [-L, -R]
 
-        num = np.convolve(g_load_num, c_den)
+        num: NDArray[np.floating] = np.convolve(g_load_num, c_den)
 
-        term1 = np.convolve(p_den, c_den)
-        term2 = np.convolve(p_num, c_num)
+        term1: NDArray[np.floating] = np.convolve(p_den, c_den)
+        term2: NDArray[np.floating] = np.convolve(p_num, c_num)
 
-        diff = len(term1) - len(term2)
+        diff: int = len(term1) - len(term2)
         if diff > 0:
             term2 = np.pad(term2, (diff, 0), "constant")
         elif diff < 0:
             term1 = np.pad(term1, (-diff, 0), "constant")
 
-        den = term1 + term2
+        den: NDArray[np.floating] = term1 + term2
         return TransferFunction(num, den)
 
-    def get_state_space(self):
+    def get_state_space(self) -> StateSpace:
         """
         Constructs the Open-Loop State-Space model of the motor.
 
@@ -207,14 +214,16 @@ class DCMotor:
         """
         J, b, K, R, L = self.params.values()
 
-        A, B = _dc_motor_linear_matrices(J, b, K, R, L)
-
-        C = np.eye(2)
-        D = np.zeros((2, 2))
+        mats: Tuple[NDArray[np.float64], NDArray[np.float64]] = (
+            _dc_motor_linear_matrices(J, b, K, R, L)
+        )
+        A, B = mats
+        C: NDArray[np.float64] = np.eye(2)
+        D: NDArray[np.float64] = np.zeros((2, 2))
 
         return StateSpace(A, B, C, D)
 
-    def get_augmented_state_space(self):
+    def get_augmented_state_space(self) -> StateSpace:
         """
         Constructs an Augmented State-Space model for the Kalman Filter.
 
@@ -231,22 +240,26 @@ class DCMotor:
         J, b, K, R, L = self.params.values()
 
         A_std, _ = _dc_motor_linear_matrices(J, b, K, R, L)
-        B_dist = np.array([[-1.0 / J], [0.0]])
+        B_dist: NDArray[np.float64] = np.array([[-1.0 / J], [0.0]])
 
-        A_aug = np.vstack((np.hstack((A_std, B_dist)), [[0.0, 0.0, 0.0]]))
-        B_aug = np.array([[0.0], [1.0 / L], [0.0]])
+        A_aug: NDArray[np.float64] = np.vstack(
+            (np.hstack((A_std, B_dist)), [[0.0, 0.0, 0.0]])
+        )
+        B_aug: NDArray[np.float64] = np.array([[0.0], [1.0 / L], [0.0]])
 
-        C_aug = np.array(
+        C_aug: NDArray[np.float64] = np.array(
             [
                 [1.0, 0.0, 0.0],
                 [0.0, 1.0, 0.0],
             ]
         )
 
-        D_aug = np.zeros((2, 1))
+        D_aug: NDArray[np.float64] = np.zeros((2, 1))
         return StateSpace(A_aug, B_aug, C_aug, D_aug)
 
-    def get_parameter_estimation_func(self):
+    def get_parameter_estimation_func(
+        self,
+    ) -> Callable[[NDArray[Any], Union[float, NDArray[np.floating]]], NDArray[Any]]:
         """
         Generates the system dynamics function f(x, u) tailored for the
         Extended Kalman Filter (EKF) to perform joint state and parameter estimation.
@@ -261,18 +274,22 @@ class DCMotor:
         """
         _, _, K, R, L = self.params.values()
 
-        def motor_dynamics_4_state(x, u):
-            if hasattr(u, "ndim") and u.ndim == 2:
-                voltage = u[0, 0]
-            elif hasattr(u, "__len__"):
-                voltage = u[0]
+        def motor_dynamics_4_state(
+            x: NDArray[Any], u: Union[float, NDArray[np.floating]]
+        ) -> NDArray[Any]:
+            voltage = 0.0
+            if isinstance(u, np.ndarray):
+                if hasattr(u, "ndim") and u.ndim == 2:
+                    voltage: float = u[0, 0]
+                elif hasattr(u, "__len__"):
+                    voltage = u[0]
             else:
                 voltage = u
 
             dw_dt, di_dt = _motor_param_estimation_step(x, voltage, K, R, L)
 
-            zeros = np.zeros_like(dw_dt)
-            result = np.array([dw_dt, di_dt, zeros, zeros])
+            zeros: NDArray[Any] = np.zeros_like(dw_dt)
+            result: NDArray[Any] = np.array([dw_dt, di_dt, zeros, zeros])
 
             if result.ndim == 1:
                 return result.reshape(-1, 1)
@@ -280,7 +297,15 @@ class DCMotor:
 
         return motor_dynamics_4_state
 
-    def get_nonlinear_dynamics(self):
+    def get_nonlinear_dynamics(
+        self,
+    ) -> Tuple[
+        Callable[
+            [NDArray[np.float64], Union[float, NDArray[Any]], float],
+            NDArray[np.float64],
+        ],
+        Callable[[NDArray[np.float64]], NDArray[np.float64]],
+    ]:
         """
         Returns the non-linear dynamics and measurement functions tailored for the
         Unscented Kalman Filter (UKF).
@@ -296,45 +321,50 @@ class DCMotor:
         Returns:
             tuple: (f_dynamics, h_measurement) functions.
         """
-        J = self.params["J"]
-        K = self.params["K"]
-        R = self.params["R"]
-        L = self.params["L"]
+        J: float = self.params["J"]
+        K: float = self.params["K"]
+        R: float = self.params["R"]
+        L: float = self.params["L"]
 
-        T_coulomb = UKF_MOTOR_PARAMS["coulomb_friction"]
-        b_viscous = UKF_MOTOR_PARAMS["viscous_friction"]
+        T_coulomb: Final[float] = UKF_MOTOR_PARAMS["coulomb_friction"]
+        b_viscous: Final[float] = UKF_MOTOR_PARAMS["viscous_friction"]
 
-        def motor_stiction_dynamics(x, u, dt):
-            omega = x[0]
-            current = x[1]
+        def motor_stiction_dynamics(
+            x: NDArray[np.float64], u: Union[float, NDArray[Any]], dt: float
+        ) -> NDArray[np.float64]:
+            omega: float = x[0]
+            current: float = x[1]
 
-            if hasattr(u, "__len__"):
-                voltage = u[0]
-            else:
+            voltage = 0.0
+            if isinstance(u, np.ndarray) and hasattr(u, "__len__"):
+                voltage: float = u[0]
+            elif isinstance(u, float):
                 voltage = u
 
-            T_motor = K * current
+            T_motor: float = K * current
 
-            T_friction = b_viscous * omega + T_coulomb * np.sign(omega)
+            T_friction: float = b_viscous * omega + T_coulomb * np.sign(omega)
 
             if abs(omega) < 0.1 and abs(T_motor) < T_coulomb:
-                domega = -omega / dt
+                domega: float = -omega / dt
             else:
                 domega = (T_motor - T_friction) / J
 
-            di_dt = (voltage - R * current - K * omega) / L
+            di_dt: float = (voltage - R * current - K * omega) / L
 
-            omega_next = omega + domega * dt
-            current_next = current + di_dt * dt
+            omega_next: float = omega + domega * dt
+            current_next: float = current + di_dt * dt
 
             return np.array([omega_next, current_next])
 
-        def measurement_model(x):
+        def measurement_model(x) -> NDArray[np.float64]:
             return x
 
         return motor_stiction_dynamics, measurement_model
 
-    def get_mpc_model(self, dt):
+    def get_mpc_model(
+        self, dt: float
+    ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
         """
         Returns the Discrete-Time Linear Matrices (A_d, B_d) for Model Predictive Control.
 
@@ -353,22 +383,22 @@ class DCMotor:
         Returns:
             tuple: (A_d, B_d_voltage) numpy arrays.
         """
-        ss = self.get_state_space()
-        A = np.asarray(ss.A)
-        B = np.asarray(ss.B)
+        ss: StateSpace = self.get_state_space()
+        A: NDArray[np.float64] = np.asarray(ss.A)
+        B: NDArray[np.float64] = np.asarray(ss.B)
 
-        n_states = A.shape[0]
-        n_inputs = B.shape[1]
+        n_states: int = A.shape[0]
+        n_inputs: int = B.shape[1]
 
-        M = np.zeros((n_states + n_inputs, n_states + n_inputs))
+        M: NDArray[np.float64] = np.zeros((n_states + n_inputs, n_states + n_inputs))
         M[:n_states, :n_states] = A
         M[:n_states, n_states:] = B
 
-        M_exp = manual_matrix_exp(M * dt)
+        M_exp: NDArray[np.float64] = manual_matrix_exp(M * dt)
 
-        A_d = M_exp[:n_states, :n_states]
-        B_d = M_exp[:n_states, n_states:]
+        A_d: NDArray[np.float64] = M_exp[:n_states, :n_states]
+        B_d: NDArray[np.float64] = M_exp[:n_states, n_states:]
 
-        B_d_voltage = B_d[:, 0].reshape(-1, 1)
+        B_d_voltage: NDArray[np.float64] = B_d[:, 0].reshape(-1, 1)
 
         return A_d, B_d_voltage

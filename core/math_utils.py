@@ -32,7 +32,7 @@ def preprocess_power(expr: str) -> str:
 
 def make_func(
     expr_string: str, var_name: str = "t"
-) -> Callable[[float | complex], float | complex]:
+) -> Callable[[Union[float, complex]], Union[float, complex]]:
     """Compiles a string expression into a callable Python function."""
     expr: str = preprocess_power(implicit_mul(expr_string))
     safe_locals: Dict[str, Any] = {}
@@ -102,7 +102,7 @@ class Differentiation:
     ) -> float:
         try:
             arg: complex = complex(point, hc)
-            func_result: float | complex = func(arg)
+            func_result: Union[float, complex] = func(arg)
             imag_part: float = complex(func_result).imag
             if imag_part != 0.0:
                 return imag_part / hc

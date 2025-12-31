@@ -53,7 +53,7 @@ class InteractiveLab:
         self.controller = None
         self.manual_input = 0.0
 
-        self.estimator = None  # type: ignore
+        self.estimator = None
         self.use_estimator = False
         self.state_est = None
 
