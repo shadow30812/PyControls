@@ -165,40 +165,93 @@ This enables safe and robust real-time control experiments.
 
 ## 📂 Project Structure
 
-```Markdown
-PyControls V5.0/
+```java
+PyControls/
 ├── core/
+│   ├── __init__.py
+│   ├── analysis.py
+│   ├── control_utils.py
 │   ├── ekf.py
 │   ├── ekf_discrete.py
+│   ├── estimator.py
+│   ├── exceptions.py
+│   ├── math_utils.py
 │   ├── mpc.py
 │   ├── solver.py
 │   ├── state_space.py
-│   ├── ukf.py
-│   ├── estimator.py
 │   ├── transfer_function.py
-│   ├── analysis.py
-│   └── math_utils.py
-├── systems/
-│   ├── pendulum.py
-│   ├── dc_motor.py
-│   ├── battery.py
-│   └── thermistor.py
-├── modules/
-│   ├── physics_engine.py
-│   └── interactive_lab.py
-├── HIL_PWM_Firmware/
-│   ├── src/main.cpp
-│   └── platformio.ini
-├── helpers/
-│   ├── plot.py
-│   ├── config.py
-│   └── simulation_runner.py
+│   └── ukf.py
 ├── docs/
 │   ├── Complexity Analysis.md
-│   └── Equations.md
-└── tests/
-    ├── test_solver.py
-    └── test_ukf_mpc.py
+│   ├── Equations and Formulae.md
+│   ├── MIT License.txt
+│   └── README.md
+├── Heater Project Report/
+│   ├── Figure.png
+│   └── Project Report.md
+├── helpers/
+│   ├── config.py
+│   ├── exit.py
+│   ├── plot.py
+│   ├── simulation_runner.py
+│   └── system_registry.py
+├── HIL_Heater_Firmware/
+│   ├── include/
+│   │   └── README
+│   ├── lib/
+│   │   └── README
+│   ├── src/
+│   │   └── main.cpp
+│   ├── test/
+│   │   └── README
+│   ├── .gitignore
+│   └── platformio.ini
+├── HIL_PWM_Firmware/
+│   ├── include/
+│   │   └── README
+│   ├── lib/
+│   │   └── README
+│   ├── src/
+│   │   └── main.cpp
+│   ├── test/
+│   │   └── README
+│   ├── .gitignore
+│   └── platformio.ini
+├── modules/
+│   ├── __init__.py
+│   ├── interactive_lab.py
+│   └── physics_engine.py
+├── PWM Project Report/
+│   ├── Figure 1.png
+│   ├── Figure 2.png
+│   ├── Figure 3.png
+│   ├── Figure 4.png
+│   ├── Figure 5.png
+│   ├── Figure 6.png
+│   └── Project Report.md
+├── systems/
+│   ├── __init__.py
+│   ├── battery.py
+│   ├── dc_motor.py
+│   ├── pendulum.py
+│   └── thermistor.py
+├── tests/
+│   ├── test_analysis.py
+│   ├── test_control.py
+│   ├── test_jit_vec.py
+│   ├── test_kf_ekf.py
+│   ├── test_math.py
+│   ├── test_models.py
+│   ├── test_modules.py
+│   ├── test_solver.py
+│   ├── test_systems.py
+│   └── test_ukf_mpc.py
+├── .gitignore
+├── main.py
+├── pyproject.toml
+├── requirements.txt
+├── script.py
+└── test_runner.py
 ```
 
 ---
@@ -235,5 +288,5 @@ This project is licensed under the MIT License. See `docs/MIT License.txt` for d
 
 ---
 
-Version: 5.3.1  
-Last Updated: 23 December 2025
+Version: 5.3.2  
+Last Updated: 1 January 2026
