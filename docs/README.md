@@ -10,11 +10,6 @@ A comprehensive, first-principles Python library for modeling, analysis, design,
 
 PyControls is designed to bridge the gap between abstract control theory and reliable numerical implementation. Unlike standard libraries that often wrap compiled binaries (such as LAPACK/BLAS) behind opaque function calls, PyControls implements core algorithms in pure, JIT-compiled Python. This ensures conceptual clarity for students and inspectability for researchers, without sacrificing performance.
 
-This project serves two purposes:
-
-* **A Production-Ready Library** – Capable of running real-time Model Predictive Control (MPC) and Extended Kalman Filters (EKF) with machine-precision derivatives.
-* **A Course Companion** – The codebase mirrors mathematical derivations found in graduate-level control theory textbooks.
-
 ---
 
 ## 🛠 Design Goals and Implementation Philosophy
