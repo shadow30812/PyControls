@@ -1,12 +1,18 @@
 import select
 import sys
 from collections import deque
+from typing import Any, Callable, Deque, Dict, Final, List, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
+from matplotlib.lines import Line2D
+from numpy.typing import ArrayLike, NDArray
 
 from core.control_utils import PIDController
 from helpers.config import BATTERY_PID, THERMISTOR_PID
+from helpers.system_registry import SystemDescriptor
 from modules.physics_engine import (
     dc_motor_dynamics,
     pendulum_dynamics,
@@ -27,7 +33,12 @@ class InteractiveLab:
     Current support includes DC Motor (Speed Control) and Inverted Pendulum (Stabilization).
     """
 
-    def __init__(self, system_descriptor, params, dt=0.01):
+    def __init__(
+        self,
+        system_descriptor: SystemDescriptor,
+        params: Dict[str, Any],
+        dt: float = 0.01,
+    ) -> None:
         """
         Initializes the simulation environment.
 
@@ -36,31 +47,31 @@ class InteractiveLab:
             params (dict): Physical parameters for the system dynamics.
             dt (float, optional): Simulation time step in seconds. Defaults to 0.01.
         """
-        self.status = "RUNNING"
-        self.failure_reason = None
-        self.max_time = 20.0
+        self.status: str = "RUNNING"
+        self.failure_reason: Optional[str] = None
+        self.max_time: Final[float] = 20.0
 
-        self.descriptor = system_descriptor
-        self.params = params
-        self.dt = dt
-        self.system_instance = None
+        self.descriptor: Final[SystemDescriptor] = system_descriptor
+        self.params: Final[Dict[str, Any]] = params
+        self.dt: Final[float] = dt
+        self.system_instance: Any = None
 
-        self.state = None
-        self.time = 0.0
-        self.running = False
+        self.state: Optional[NDArray[np.float64]] = None
+        self.time: float = 0.0
+        self.running: bool = False
 
-        self.control_mode = "MANUAL"
-        self.controller = None
-        self.manual_input = 0.0
+        self.control_mode: str = "MANUAL"
+        self.controller: Optional[Callable[[NDArray[np.float64], float], float]] = None
+        self.manual_input: float = 0.0
 
-        self.estimator = None
-        self.use_estimator = False
-        self.state_est = None
+        self.estimator: Any = None
+        self.use_estimator: bool = False
+        self.state_est: Optional[NDArray[np.float64]] = None
 
-        self.last_u = 0.0
-        self.last_avg = 0.0
+        self.last_u: float = 0.0
+        self.last_avg: float = 0.0
 
-    def initialize(self):
+    def initialize(self) -> None:
         """
         Resets the simulation state and configures system-specific goals.
 
@@ -71,31 +82,31 @@ class InteractiveLab:
             NotImplementedError: If the system ID is not recognized.
         """
         self.time = 0.0
-        self.success_timer = 0.0
+        self.success_timer: float = 0.0
         self.running = True
         self.status = "RUNNING"
         self.failure_reason = None
 
-        sid = self.descriptor.system_id
+        sid: str = self.descriptor.system_id
 
         if sid == "dc_motor":
             self.state = np.array([0.0, 0.0], dtype=float)
-            self.omega_ref = self.params.get("omega_ref", 1.0)
-            self.omega_tol = self.params.get("omega_tol", 0.05)
-            self.success_time_required = 5.0
+            self.omega_ref: float = self.params.get("omega_ref", 1.0)
+            self.omega_tol: float = self.params.get("omega_tol", 0.05)
+            self.success_time_required: float = 5.0
             self._dynamics = dc_motor_dynamics
 
         elif sid == "pendulum":
             self.state = np.array([0.0, 0.0, 0.05, 0.0], dtype=float)
-            self.theta_limit = self.params.get("theta_limit", 0.5)
+            self.theta_limit: float = self.params.get("theta_limit", 0.5)
             self.success_time_required = 5.0
-            self._dynamics = pendulum_dynamics
+            self._dynamics: Callable[..., NDArray[np.float64]] = pendulum_dynamics
 
         elif sid == "thermistor":
             self.system_instance = self.descriptor.system_class(**self.params)
             self.system_instance.connect()
             self.state = np.array([25.0])
-            cfg = THERMISTOR_PID
+            cfg: Dict[str, Any] = THERMISTOR_PID
 
             tmp_pid = PIDController(
                 Kp=cfg["Kp"],
@@ -114,9 +125,9 @@ class InteractiveLab:
             self.system_instance = self.descriptor.system_class(**self.params)
             self.system_instance.connect()
             self.state = np.array([0.0])
-            self.success_window = deque()
-            self.success_window_duration = 5.0
-            self.success_tol = 0.05
+            self.success_window: Deque[float] = deque()
+            self.success_window_duration: float = 5.0
+            self.success_tol: float = 0.05
 
             pwm_pid = PIDController(
                 BATTERY_PID["Kp"],
@@ -136,7 +147,7 @@ class InteractiveLab:
 
         self.state_est = self.state.copy()
 
-    def step(self, disturbance=0.0):
+    def step(self, disturbance: float = 0.0) -> NDArray[np.float64]:
         """
         Advances the simulation by one fixed time step.
 
@@ -153,6 +164,9 @@ class InteractiveLab:
         Returns:
             np.ndarray: The updated state vector.
         """
+        if self.state is None:
+            return np.zeros(0)
+
         if self.status in ("SUCCESS", "FAILED"):
             return self.state
 
@@ -162,7 +176,7 @@ class InteractiveLab:
         if self.control_mode == "MANUAL":
             self.handle_keyboard_input()
 
-        u = self.get_control_input()
+        u: float = self.get_control_input()
         self.last_u = u
 
         if self.descriptor.is_hardware and self.descriptor.system_id == "thermistor":
@@ -184,7 +198,7 @@ class InteractiveLab:
             )
 
         if self.use_estimator and self.estimator is not None:
-            y = (
+            y: NDArray[np.float64] = (
                 self.measurement_func(self.state)
                 if self.measurement_func
                 else self.state
@@ -199,7 +213,7 @@ class InteractiveLab:
         self.evaluate_rules()
         return self.state
 
-    def reset(self):
+    def reset(self) -> None:
         """
         Clears the current simulation state, stopping execution.
         Also stops hardware circuit(s) connected to the program.
@@ -214,7 +228,7 @@ class InteractiveLab:
         self.time = 0.0
         self.running = False
 
-    def evaluate_rules(self):
+    def evaluate_rules(self) -> None:
         """
         Checks system-specific rules to determine SUCCESS or FAILED status.
 
@@ -222,8 +236,11 @@ class InteractiveLab:
         - Pendulum: Fail if angle exceeds limits. Success if it stays upright for 5 seconds.
         """
         if self.descriptor.system_id == "dc_motor":
-            omega = self.state[0]
-            error = abs(omega - self.omega_ref)
+            if self.state is not None:
+                omega: float = self.state[0]
+            else:
+                raise RuntimeError
+            error: float = abs(omega - self.omega_ref)
 
             if error <= self.omega_tol:
                 self.success_timer += self.dt
@@ -233,7 +250,10 @@ class InteractiveLab:
                 self.success_timer = 0.0
 
         elif self.descriptor.system_id == "pendulum":
-            theta = self.state[2]
+            if self.state is not None:
+                theta: float = self.state[2]
+            else:
+                raise RuntimeError
 
             if abs(theta) > self.theta_limit:
                 self.status = "FAILED"
@@ -245,7 +265,10 @@ class InteractiveLab:
                     self.status = "SUCCESS"
 
         elif self.descriptor.system_id == "thermistor":
-            temp = self.state[0]
+            if self.state is not None:
+                temp: float = self.state[0]
+            else:
+                raise RuntimeError
             if abs(temp - self.params["setpoint"]) <= 1.0:
                 self.success_timer += self.dt
                 if self.success_timer >= 5.0:
@@ -254,10 +277,13 @@ class InteractiveLab:
                 self.success_timer = 0.0
 
         elif self.descriptor.system_id == "battery":
-            v = self.state_est[0]
+            if self.state_est is not None:
+                v: float = self.state_est[0]
+            else:
+                raise RuntimeError
             self.success_window.append(v)
-            max_len = int(self.success_window_duration / self.dt)
-            avg_v = sum(self.success_window) / len(self.success_window)
+            max_len: int = int(self.success_window_duration / self.dt)
+            avg_v: float = sum(self.success_window) / len(self.success_window)
             self.last_avg = avg_v
 
             while len(self.success_window) > max_len:
@@ -267,7 +293,7 @@ class InteractiveLab:
                 if abs(avg_v - self.params["setpoint"]) <= self.success_tol:
                     self.status = "SUCCESS"
 
-    def get_control_input(self):
+    def get_control_input(self) -> float:
         """
         Retrieves the control signal 'u' based on the active mode.
 
@@ -280,18 +306,23 @@ class InteractiveLab:
         elif self.control_mode == "AUTO":
             if self.controller is None:
                 raise RuntimeError("AUTO mode selected but no controller provided.")
-            return self.controller(self.state_est, self.time)
+            if self.state_est is not None:
+                return self.controller(self.state_est, self.time)
+            else:
+                raise RuntimeError
 
         else:
             raise ValueError(f"Unknown control mode: {self.control_mode}")
 
-    def set_manual_input(self, u):
+    def set_manual_input(self, u: Union[float, int]) -> None:
         """
         Sets the control input value directly (used by manual interface).
         """
         self.manual_input = float(u)
 
-    def set_auto_controller(self, controller_fn):
+    def set_auto_controller(
+        self, controller_fn: Callable[[NDArray[np.float64], float], float]
+    ) -> None:
         """
         Registers an automatic controller function and switches to AUTO mode.
 
@@ -301,13 +332,13 @@ class InteractiveLab:
         self.controller = controller_fn
         self.control_mode = "AUTO"
 
-    def set_manual_mode(self):
+    def set_manual_mode(self) -> None:
         """
         Switches control authority to the manual user inputs.
         """
         self.control_mode = "MANUAL"
 
-    def handle_keyboard_input(self):
+    def handle_keyboard_input(self) -> None:
         """
         Poller for non-blocking keyboard input (Unix-style).
 
@@ -325,7 +356,7 @@ class InteractiveLab:
         if not readable:
             return
 
-        key = sys.stdin.read(1)
+        key: str = sys.stdin.read(1)
 
         if key == "q":
             self.status = "FAILED"
@@ -347,23 +378,26 @@ class InteractiveLab:
             if self.controller is not None:
                 self.control_mode = "AUTO"
 
-    def init_visualization(self):
+    def init_visualization(self) -> None:
         """
         Sets up the Matplotlib figure for real-time plotting.
         """
 
         if self.descriptor.system_id == "dc_motor":
-            self.fig, self.ax = plt.subplots()
+            Fax: Tuple[Figure, Axes] = plt.subplots()
+            self.fig, self.ax = Fax
             self.ax.set_title("DC Motor Speed")
             self.ax.set_xlabel("Time (s)")
             self.ax.set_ylabel("ω (rad/s)")
             self.ax.axhline(0.0, color="k", linestyle="--")
-            self.times = []
-            self.values = []
+            self.times: List[float] = []
+            self.values: List[float] = []
+            self.line: Line2D
             (self.line,) = self.ax.plot([], [], lw=2)
 
         elif self.descriptor.system_id == "pendulum":
-            self.fig, self.ax = plt.subplots()
+            Fax: Tuple[Figure, Axes] = plt.subplots()
+            self.fig, self.ax = Fax
             self.ax.set_title("Inverted Pendulum Angle")
             self.ax.set_xlabel("Time (s)")
             self.ax.set_ylabel("θ (rad)")
@@ -373,7 +407,8 @@ class InteractiveLab:
             (self.line,) = self.ax.plot([], [], lw=2)
 
         elif self.descriptor.system_id == "thermistor":
-            self.fig, self.ax = plt.subplots()
+            Fax: Tuple[Figure, Axes] = plt.subplots()
+            self.fig, self.ax = Fax
             self.ax.set_title("HIL Temperature Control")
             self.ax.set_ylabel("Temp (°C)")
             self.ax.axhline(
@@ -385,16 +420,24 @@ class InteractiveLab:
             (self.line,) = self.ax.plot([], [], "b-")
 
         if self.descriptor.system_id == "battery":
-            self.fig, self.axes = plt.subplots(2, 2, figsize=(12, 8))
-            self.ax_v = self.axes[0, 0]
-            self.ax_u = self.axes[0, 1]
-            self.ax_inn = self.axes[1, 0]
-            self.ax_p = self.axes[1, 1]
+            Faxes: Tuple[Figure, NDArray[Any]] = plt.subplots(2, 2, figsize=(12, 8))
+            self.fig, self.axes = Faxes
+
+            self.ax_v: Axes = self.axes[0, 0]
+            self.ax_u: Axes = self.axes[0, 1]
+            self.ax_inn: Axes = self.axes[1, 0]
+            self.ax_p: Axes = self.axes[1, 1]
 
             self.ax_v.set_title("Voltage Tracking (V)")
             self.ax_u.set_title("Control Effort (PWM)")
             self.ax_inn.set_title("Innovation (Residue)")
             self.ax_p.set_title("Filter Covariance (P)")
+
+            self.line_v_est: Line2D
+            self.line_v_raw: Line2D
+            self.line_u: Line2D
+            self.line_inn: Line2D
+            self.line_p: Line2D
 
             (self.line_v_est,) = self.ax_v.plot([], [], "b-", label="KF Estimate")
             (self.line_v_raw,) = self.ax_v.plot(
@@ -409,19 +452,19 @@ class InteractiveLab:
             (self.line_inn,) = self.ax_inn.plot([], [], "m-", label="Innovation")
             (self.line_p,) = self.ax_p.plot([], [], "k-", label="P (Certainty)")
 
-            self.hist_v_raw = []
-            self.hist_inn = []
-            self.hist_p = []
+            self.hist_v_raw: List[float] = []
+            self.hist_inn: List[float] = []
+            self.hist_p: List[float] = []
             self.times = []
-            self.hist_v_est = []
-            self.hist_u = []
+            self.hist_v_est: List[float] = []
+            self.hist_u: List[float] = []
 
             plt.tight_layout()
 
         plt.ion()
         plt.show()
 
-    def update_visualization(self):
+    def update_visualization(self) -> None:
         """
         Updates the real-time plot with the latest simulation data.
         """
@@ -429,20 +472,24 @@ class InteractiveLab:
         if self.status == "SUCCESS":
             plt.savefig(f"final_success_plot_{self.descriptor.system_id}.png")
 
-        if self.descriptor.system_id == "dc_motor":
+        if self.descriptor.system_id == "dc_motor" and self.state is not None:
             self.values.append(self.state[0])
-        elif self.descriptor.system_id == "pendulum":
+        elif self.descriptor.system_id == "pendulum" and self.state is not None:
             self.values.append(self.state[2])
-        elif self.descriptor.system_id == "thermistor":
+        elif self.descriptor.system_id == "thermistor" and self.state is not None:
             self.values.append(self.state[0])
 
-        elif self.descriptor.system_id == "battery":
+        elif (
+            self.descriptor.system_id == "battery"
+            and self.state is not None
+            and self.state_est is not None
+        ):
             self.hist_v_est.append(self.state_est[0])
             self.hist_v_raw.append(self.state[0])
             self.hist_u.append(self.last_u)
 
             if self.estimator:
-                innovation = self.hist_v_raw[-1] - self.hist_v_est[-1]
+                innovation: float = self.hist_v_raw[-1] - self.hist_v_est[-1]
                 self.hist_inn.append(innovation)
                 self.hist_p.append(self.estimator.P[0, 0])
 
@@ -452,6 +499,7 @@ class InteractiveLab:
             self.line_inn.set_data(self.times, self.hist_inn)
             self.line_p.set_data(self.times, self.hist_p)
 
+            ax: Axes
             for ax in self.axes.flat:
                 ax.relim()
                 ax.autoscale_view()
@@ -464,7 +512,13 @@ class InteractiveLab:
         self.ax.autoscale_view()
         plt.pause(0.001)
 
-    def set_estimator(self, estimator, measurement_func=None):
+    def set_estimator(
+        self,
+        estimator: Any,
+        measurement_func: Optional[
+            Callable[[NDArray[np.float64]], NDArray[np.float64]]
+        ] = None,
+    ) -> None:
         """
         Attaches a state estimator (e.g., Kalman Filter) to the simulation loop.
 
@@ -475,28 +529,34 @@ class InteractiveLab:
         """
         self.estimator = estimator
         self.use_estimator = True
-        self.measurement_func = measurement_func
+        self.measurement_func: Optional[
+            Callable[[NDArray[np.float64]], NDArray[np.float64]]
+        ] = measurement_func
 
 
-def simple_dc_motor_pid(omega_ref, Kp=1.0):
+def simple_dc_motor_pid(
+    omega_ref: float, Kp: float = 1.0
+) -> Callable[[NDArray[np.float64], float], float]:
     """
     Factory for a simple Proportional controller for the DC motor.
     """
 
-    def controller(state, t):
-        omega = state[0]
+    def controller(state: NDArray[np.float64], t: float) -> float:
+        omega: float = state[0]
         return Kp * (omega_ref - omega)
 
     return controller
 
 
-def pendulum_lqr_controller(K):
+def pendulum_lqr_controller(
+    K: NDArray[np.float64],
+) -> Callable[[NDArray[np.float64], float], float]:
     """
     Factory for an LQR controller for the pendulum.
     Assumes u = -K * x.
     """
 
-    def controller(state, t):
+    def controller(state: NDArray[np.float64], t: float) -> float:
         return float(-K @ state)
 
     return controller

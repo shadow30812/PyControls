@@ -6,9 +6,11 @@ all physical parameters, simulation settings, controller gains, and visualizatio
 preferences.
 """
 
+from typing import Any, Dict, List
+
 import numpy as np
 
-MOTOR_PARAMS = {
+MOTOR_PARAMS: Dict[str, float] = {
     "J": 0.02,
     "b": 0.2,
     "K": 0.1,
@@ -16,7 +18,7 @@ MOTOR_PARAMS = {
     "L": 0.5,
 }
 
-PENDULUM_PARAMS = {
+PENDULUM_PARAMS: Dict[str, float] = {
     "M": 1.0,
     "m": 0.1,
     "l": 0.5,
@@ -25,7 +27,7 @@ PENDULUM_PARAMS = {
     "theta_limit": 0.5,
 }
 
-THERMISTOR_PARAMS = {
+THERMISTOR_PARAMS: Dict[str, Any] = {
     "port": "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0",  # USB(n)
     "baud": 115200,
     "R_divider": 10000.0,
@@ -35,7 +37,7 @@ THERMISTOR_PARAMS = {
     "setpoint": 45.0,
 }
 
-THERMISTOR_PID = {
+THERMISTOR_PID: Dict[str, Any] = {
     "Kp": 20.0,
     "Ki": 60.0,
     "Kd": 0.0,
@@ -43,37 +45,37 @@ THERMISTOR_PID = {
     "integral_limits": (-50, 50),
 }
 
-BATTERY_PARAMS = {
+BATTERY_PARAMS: Dict[str, Any] = {
     "port": "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0",  # USB(n)
     "baud": 115200,
     "setpoint": 2.5,
 }
 
-BATTERY_KF = {
+BATTERY_KF: Dict[str, list[float]] = {
     "Q": [1e-3],
     "R": [1e-2],
 }
 
-BATTERY_PID = {
+BATTERY_PID: Dict[str, float] = {
     "Kp": -28.0,
     "Ki": -105.0,
     "Kd": 0.0,
 }
 
-SIM_PARAMS = {
+SIM_PARAMS: Dict[str, float] = {
     "dt": 0.001,
     "t_end": 3.0,
     "step_volts": 1.0,
     "step_angle": 0.0,
 }
 
-DISTURBANCE_PARAMS = {
+DISTURBANCE_PARAMS: Dict[str, Any] = {
     "enabled": True,
     "time": 1.5,
     "magnitude": 0.5,
 }
 
-CONTROLLERS = [
+CONTROLLERS: List[Dict[str, Any]] = [
     {
         "name": "P (Weak)",
         "Kp": 50,
@@ -97,7 +99,7 @@ CONTROLLERS = [
     },
 ]
 
-PLOT_PARAMS = {
+PLOT_PARAMS: Dict[str, Any] = {
     "figsize": (14, 6),
     "grid_alpha": 0.3,
     "bode_range": (-1, 3, 500),
@@ -114,7 +116,7 @@ PLOT_PARAMS = {
     },
 }
 
-CUSTOM_SIM_PARAMS = {
+CUSTOM_SIM_PARAMS: Dict[str, Any] = {
     "dt": 0.001,
     "dt_min": 1e-5,
     "dt_max": 0.1,
@@ -124,7 +126,7 @@ CUSTOM_SIM_PARAMS = {
     "initial_state": (1, 1),
 }
 
-ESTIMATION_PARAMS = {
+ESTIMATION_PARAMS: Dict[str, Any] = {
     "dt": 0.001,
     "t_end": 15.0,
     "true_system_params": {
@@ -147,7 +149,7 @@ ESTIMATION_PARAMS = {
     "input_period": 2.0,
 }
 
-UKF_PARAMS = {
+UKF_PARAMS: Dict[str, Any] = {
     "dt": 0.01,
     "t_end": 10.0,
     "noise_std": 0.1,
@@ -158,7 +160,7 @@ UKF_PARAMS = {
     "kappa": 0.0,
 }
 
-DC_MOTOR_DEFAULTS = {
+DC_MOTOR_DEFAULTS: Dict[str, Any] = {
     "J": 0.01,
     "b": 0.1,
     "K": 0.01,
@@ -166,12 +168,12 @@ DC_MOTOR_DEFAULTS = {
     "L": 0.5,
 }
 
-PENDULUM_LQR_PARAMS = {
+PENDULUM_LQR_PARAMS: Dict[str, Any] = {
     "Q_diag": [5.0, 1.0, 10.0, 1.0],
     "R_val": 0.1,
 }
 
-PRESET_SIM_PARAMS = {
+PRESET_SIM_PARAMS: Dict[str, Any] = {
     "kf_Q_scale": 1e-4,
     "kf_Q_dist_scale": 1e-2,
     "kf_R_scale": 0.01,
@@ -182,7 +184,7 @@ PRESET_SIM_PARAMS = {
     "noise_std": 0.01,
 }
 
-INTERACTIVE_LAB_PARAMS = {
+INTERACTIVE_LAB_PARAMS: Dict[str, Any] = {
     "omega_ref": 1.0,
     "controller_min_dt": 0.001,
     "ekf_x0": [0.0, 0.0, 0.05, 0.0],
@@ -190,7 +192,7 @@ INTERACTIVE_LAB_PARAMS = {
     "ekf_R_diag": [1e-3, 1e-3],
 }
 
-MPC_SOLVER_PARAMS = {
+MPC_SOLVER_PARAMS: Dict[str, Any] = {
     "rho": 1.0,
     "finite_diff_eps": 1e-5,
     "ilqr_reg": 1.0,
@@ -201,7 +203,7 @@ MPC_SOLVER_PARAMS = {
     "mpc_stride": 3,
 }
 
-SOLVER_PARAMS = {
+SOLVER_PARAMS: Dict[str, Any] = {
     "matrix_exp_order": 20,
     "adaptive_dt_min": 1e-5,
     "adaptive_dt_max": 0.5,
@@ -211,7 +213,7 @@ SOLVER_PARAMS = {
     "safety_factor_2": 0.2,
 }
 
-PENDULUM_ESTIMATION_PARAMS = {
+PENDULUM_ESTIMATION_PARAMS: Dict[str, Any] = {
     "dt": 0.01,
     "t_end": 20.0,
     "true_system_params": {
@@ -231,7 +233,7 @@ PENDULUM_ESTIMATION_PARAMS = {
     "input_period": 4.0,
 }
 
-UKF_PENDULUM_PARAMS = {
+UKF_PENDULUM_PARAMS: Dict[str, Any] = {
     "dt": 0.01,
     "t_end": 10.0,
     "x0": [1.57, 0],
@@ -244,7 +246,7 @@ UKF_PENDULUM_PARAMS = {
     "kappa": 0.0,
 }
 
-UKF_MOTOR_PARAMS = {
+UKF_MOTOR_PARAMS: Dict[str, Any] = {
     "dt": 0.001,
     "t_end": 4.0,
     "x0": [0.0, 0.0],
@@ -259,7 +261,7 @@ UKF_MOTOR_PARAMS = {
     "viscous_friction": 0.1,
 }
 
-MPC_MOTOR_PARAMS = {
+MPC_MOTOR_PARAMS: Dict[str, Any] = {
     "dt": 0.05,
     "horizon": 20,
     "Q_diag": [20.0, 0.0],
@@ -270,7 +272,7 @@ MPC_MOTOR_PARAMS = {
     "iterations": 50,
 }
 
-MPC_PENDULUM_PARAMS = {
+MPC_PENDULUM_PARAMS: Dict[str, Any] = {
     "dt": 0.02,
     "horizon": 100,
     "Q_diag": [1.0, 0.1, 20.0, 0.1],

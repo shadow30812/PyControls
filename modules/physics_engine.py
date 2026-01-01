@@ -1,7 +1,16 @@
+from typing import Any, Callable, Dict, Union
+
 import numpy as np
+from numpy.typing import NDArray
 
 
-def dc_motor_dynamics(t, x, u, params, disturbance=0.0):
+def dc_motor_dynamics(
+    t: float,
+    x: NDArray[Any],
+    u: float,
+    params: Dict[str, float],
+    disturbance: float = 0.0,
+) -> NDArray[Any]:
     """
     Computes the continuous-time dynamics of a DC motor.
 
@@ -28,19 +37,25 @@ def dc_motor_dynamics(t, x, u, params, disturbance=0.0):
     """
     omega, current = x
 
-    J = params["J"]
-    b = params["b"]
-    K = params["K"]
-    R = params["R"]
-    L = params["L"]
+    J: float = params["J"]
+    b: float = params["b"]
+    K: float = params["K"]
+    R: float = params["R"]
+    L: float = params["L"]
 
-    domega_dt = (K * current - b * omega - disturbance) / J
-    dcurrent_dt = (u - R * current - K * omega) / L
+    domega_dt: Any = (K * current - b * omega - disturbance) / J
+    dcurrent_dt: Any = (u - R * current - K * omega) / L
 
     return np.array([domega_dt, dcurrent_dt])
 
 
-def pendulum_dynamics(t, x, u, params, disturbance=0.0):
+def pendulum_dynamics(
+    t: float,
+    x: NDArray[Any],
+    u: float,
+    params: Dict[str, float],
+    disturbance: float = 0.0,
+) -> NDArray[Any]:
     """
     Computes the nonlinear dynamics of an inverted pendulum on a cart.
 
@@ -71,40 +86,49 @@ def pendulum_dynamics(t, x, u, params, disturbance=0.0):
     Returns:
         np.ndarray: The state derivatives [v, a, theta_dot, theta_ddot].
     """
-    x_dot = x[1]
-    theta = x[2]
-    theta_dot = x[3]
+    x_dot: Any = x[1]
+    theta: Any = x[2]
+    theta_dot: Any = x[3]
 
-    M = params["M"]
-    m = params["m"]
-    l = params["l"]
-    b = params.get("b", 0.0)
-    g = params.get("g", 9.81)
+    M: float = params["M"]
+    m: float = params["m"]
+    l: float = params["l"]
+    b: float = params.get("b", 0.0)
+    g: float = params.get("g", 9.81)
 
-    sin_t = np.sin(theta)
-    cos_t = np.cos(theta)
+    sin_t: Union[np.floating, NDArray[np.floating]] = np.sin(theta)
+    cos_t: Union[np.floating, NDArray[np.floating]] = np.cos(theta)
 
-    denom = M + m * (1 - cos_t**2)
+    denom: Union[np.floating, NDArray[np.floating]] = M + m * (1 - cos_t**2)
 
-    term_grav = (M + m) * g * sin_t
+    term_grav: Union[np.floating, NDArray[np.floating]] = (M + m) * g * sin_t
 
-    term_coupled = -cos_t * (u + m * l * theta_dot**2 * sin_t)
+    term_coupled: Any = -cos_t * (u + m * l * theta_dot**2 * sin_t)
 
-    term_fric = -(M + m) * b * theta_dot / (m * l)
+    term_fric: Any = -(M + m) * b * theta_dot / (m * l)
 
-    term_dist = disturbance * (M + m) / (m * l)
+    term_dist: float = disturbance * (M + m) / (m * l)
 
-    theta_ddot = (term_grav + term_coupled + term_fric + term_dist) / (l * denom)
+    theta_ddot: Any = (term_grav + term_coupled + term_fric + term_dist) / (l * denom)
 
-    term3 = u + m * l * theta_dot**2 * sin_t
-    term4 = -m * g * sin_t * cos_t
+    term3: Any = u + m * l * theta_dot**2 * sin_t
+    term4: Union[np.floating, NDArray[np.floating]] = -m * g * sin_t * cos_t
 
-    x_ddot = (term3 + term4) / denom
+    x_ddot: Any = (term3 + term4) / denom
 
     return np.array([x_dot, x_ddot, theta_dot, theta_ddot])
 
 
-def rk4_fixed_step(dynamics_func, x, u, dt, params, disturbance=0.0):
+def rk4_fixed_step(
+    dynamics_func: Callable[
+        [float, NDArray[Any], Any, Dict[str, float], float], NDArray[Any]
+    ],
+    x: NDArray[Any],
+    u: Any,
+    dt: float,
+    params: Dict[str, float],
+    disturbance: float = 0.0,
+) -> NDArray[Any]:
     """
     Implements a fixed-step Runge-Kutta 4th Order (RK4) integrator.
 
@@ -126,9 +150,9 @@ def rk4_fixed_step(dynamics_func, x, u, dt, params, disturbance=0.0):
     Returns:
         np.ndarray: The estimated state vector at time t + dt.
     """
-    k1 = dynamics_func(0.0, x, u, params, disturbance)
-    k2 = dynamics_func(0.0, x + 0.5 * dt * k1, u, params, disturbance)
-    k3 = dynamics_func(0.0, x + 0.5 * dt * k2, u, params, disturbance)
-    k4 = dynamics_func(0.0, x + dt * k3, u, params, disturbance)
+    k1: NDArray[Any] = dynamics_func(0.0, x, u, params, disturbance)
+    k2: NDArray[Any] = dynamics_func(0.0, x + 0.5 * dt * k1, u, params, disturbance)
+    k3: NDArray[Any] = dynamics_func(0.0, x + 0.5 * dt * k2, u, params, disturbance)
+    k4: NDArray[Any] = dynamics_func(0.0, x + dt * k3, u, params, disturbance)
 
     return x + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)

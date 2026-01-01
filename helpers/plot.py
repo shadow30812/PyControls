@@ -3,28 +3,37 @@ Centralized plotting utilities for PyControls.
 All visualization logic lives here to keep the application core headless.
 """
 
+from typing import Any, Dict, List, Union
+
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.figure import Figure
+from numpy.typing import NDArray
+
+from core.state_space import StateSpace
 
 
 def plot_time_response(
-    t,
-    y_real,
-    x_est,
-    u_hist,
-    labels,
-    indices,
-    controllers,
-    system_id,
-    dist_params,
-):
+    t: NDArray[np.float64],
+    y_real: Dict[str, NDArray[np.float64]],
+    x_est: Dict[str, NDArray[np.float64]],
+    u_hist: Dict[str, NDArray[np.float64]],
+    labels: List[str],
+    indices: List[int],
+    controllers: List[Dict[str, Any]],
+    system_id: str,
+    dist_params: Dict[str, Any],
+) -> None:
+    fig: Figure
+    axes: NDArray[Any]
+
     fig, axes = plt.subplots(2, 2, figsize=(12, 8))
     ax1, ax2 = axes[0, 0], axes[0, 1]
     ax3, ax4 = axes[1, 0], axes[1, 1]
 
     for ctrl in controllers:
-        name = ctrl["name"]
-        color = ctrl["color"]
+        name: str = ctrl["name"]
+        color: str = ctrl["color"]
 
         ax1.plot(t, y_real[name][:, indices[0]], label=name, color=color)
         ax2.plot(t, y_real[name][:, indices[1]], label=name, color=color)
@@ -66,15 +75,15 @@ def plot_time_response(
 
 
 def plot_analysis_dashboard(
-    ss,
-    w,
-    mags,
-    phases,
-    t,
-    y_real,
-    x_est,
-    system_id,
-):
+    ss: StateSpace,
+    w: NDArray[np.float64],
+    mags: NDArray[np.float64],
+    phases: NDArray[np.float64],
+    t: NDArray[np.float64],
+    y_real: NDArray[np.float64],
+    x_est: NDArray[np.float64],
+    system_id: str,
+) -> None:
     fig, axes = plt.subplots(2, 2, figsize=(12, 8))
     ax_bode, ax_pz = axes[0, 0], axes[0, 1]
     ax_kalman, ax_phase = axes[1, 0], axes[1, 1]
@@ -85,7 +94,9 @@ def plot_analysis_dashboard(
     ax_bode.set_ylabel("Magnitude (dB)")
     ax_bode.grid(True, which="both", alpha=0.3)
 
-    eigenvalues = np.linalg.eigvals(ss.A)
+    eigenvalues: Union[NDArray[np.floating], NDArray[np.complexfloating]] = (
+        np.linalg.eigvals(ss.A)
+    )
     ax_pz.scatter(
         eigenvalues.real,
         eigenvalues.imag,
@@ -102,10 +113,10 @@ def plot_analysis_dashboard(
     ax_pz.grid(True, alpha=0.3)
     ax_pz.legend()
 
-    out_idx = 2 if system_id == "pendulum" else 0
+    out_idx: int = 2 if system_id == "pendulum" else 0
 
     if len(x_est) > 0:
-        err = y_real[:, out_idx] - x_est[:, out_idx]
+        err: NDArray[np.float64] = y_real[:, out_idx] - x_est[:, out_idx]
         ax_kalman.plot(t, err, "b")
         ax_kalman.set_title("Kalman Estimation Error")
         ax_kalman.set_xlabel("Time (sec)")
@@ -131,12 +142,18 @@ def plot_analysis_dashboard(
     plt.show()
 
 
-def plot_estimation_history(t, history, labels, true_params, param_names):
+def plot_estimation_history(
+    t: NDArray[np.float64],
+    history: Dict[str, Any],
+    labels: List[str],
+    true_params: List[float],
+    param_names: List[str],
+) -> None:
     fig, axes = plt.subplots(2, 2, figsize=(12, 8))
 
-    def _safe_1d(signal):
+    def _safe_1d(signal: Any) -> NDArray[np.float64]:
         try:
-            arr = np.asarray(signal).squeeze()
+            arr: NDArray[np.float64] = np.asarray(signal).squeeze()
         except Exception as e:
             print(e)
             return np.zeros_like(t)
@@ -152,10 +169,10 @@ def plot_estimation_history(t, history, labels, true_params, param_names):
 
         return np.zeros_like(t)
 
-    y1_true = _safe_1d(history.get("y1_true"))
-    y1_est = _safe_1d(history.get("y1_est"))
-    y2_true = _safe_1d(history.get("y2_true"))
-    y2_est = _safe_1d(history.get("y2_est"))
+    y1_true: NDArray[np.float64] = _safe_1d(history.get("y1_true"))
+    y1_est: NDArray[np.float64] = _safe_1d(history.get("y1_est"))
+    y2_true: NDArray[np.float64] = _safe_1d(history.get("y2_true"))
+    y2_est: NDArray[np.float64] = _safe_1d(history.get("y2_est"))
 
     axes[0, 0].plot(t, y1_true, "k-", label="True")
     axes[0, 0].plot(t, y1_est, "r--", label="Est")
@@ -189,7 +206,13 @@ def plot_estimation_history(t, history, labels, true_params, param_names):
     plt.show()
 
 
-def plot_ukf_estimation(t_vals, true_states, est_states, measurements, labels):
+def plot_ukf_estimation(
+    t_vals: NDArray[np.float64],
+    true_states: NDArray[np.float64],
+    est_states: NDArray[np.float64],
+    measurements: NDArray[np.float64],
+    labels: List[str],
+) -> None:
     plt.figure(figsize=(10, 8))
 
     plt.subplot(2, 1, 1)
@@ -231,7 +254,16 @@ def plot_ukf_estimation(t_vals, true_states, est_states, measurements, labels):
     plt.show()
 
 
-def plot_mpc_response(t, x_hist, u_hist, ref, labels, plot_idx, system_id, cfg):
+def plot_mpc_response(
+    t: NDArray[np.float64],
+    x_hist: NDArray[np.float64],
+    u_hist: NDArray[np.float64],
+    ref: NDArray[np.float64],
+    labels: List[str],
+    plot_idx: int,
+    system_id: str,
+    cfg: Dict[str, Any],
+) -> None:
     plt.figure(figsize=(10, 8))
 
     plt.subplot(2, 1, 1)
@@ -260,7 +292,9 @@ def plot_mpc_response(t, x_hist, u_hist, ref, labels, plot_idx, system_id, cfg):
     plt.show()
 
 
-def plot_custom_simulation(t, y, eqn):
+def plot_custom_simulation(
+    t: NDArray[np.float64], y: NDArray[np.float64], eqn: str
+) -> None:
     plt.figure()
     plt.plot(t, y, label=f"dx/dt = {eqn}")
     plt.title(f"Adaptive RK45 Simulation: {eqn}")

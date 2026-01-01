@@ -1,9 +1,10 @@
 import os
 import signal
 import sys
+from typing import NoReturn
 
 
-def flush():
+def flush() -> None:
     """
     Flushes standard output and error streams.
     """
@@ -11,14 +12,14 @@ def flush():
     sys.stderr.flush()
 
 
-def kill():
+def kill() -> None:
     """
     Forcefully kills the current process.
     """
     os.kill(os.getpid(), signal.SIGKILL)
 
 
-def stop():
+def stop() -> NoReturn:
     """
     Exits the program gracefully.
     """

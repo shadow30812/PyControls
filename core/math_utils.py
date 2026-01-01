@@ -63,7 +63,8 @@ def make_func(
 def make_system_func(
     expr_string: str,
 ) -> Callable[
-    [float, NDArray[np.float64], Union[float, NDArray[np.float64]]], NDArray[np.float64]
+    [float, NDArray[np.float64], Union[float, NDArray[np.float64]]],
+    Union[float, complex, NDArray[np.float64]],
 ]:
     """Compiles a string expression into a state-space function f(t, x, u)."""
 
