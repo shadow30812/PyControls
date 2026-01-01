@@ -1,6 +1,8 @@
 import unittest
+from typing import Any, Optional
 
 import numpy as np
+from numpy.typing import NDArray
 
 from core.ekf import ExtendedKalmanFilter
 from core.solver import _mat_mul, manual_matrix_exp
@@ -12,7 +14,7 @@ class TestJITAndVectorization(unittest.TestCase):
     Ensures numerical correctness of custom implementations (replacing SciPy).
     """
 
-    def test_manual_matrix_mul_correctness(self):
+    def test_manual_matrix_mul_correctness(self) -> None:
         """
         Verify the custom JIT matrix multiplication against NumPy's dot product.
         This is critical since @ has been replaced by _mat_mul for Numba compatibility.
@@ -26,7 +28,7 @@ class TestJITAndVectorization(unittest.TestCase):
 
         np.testing.assert_array_almost_equal(result, expected, decimal=12)
 
-    def test_manual_matrix_mul_nonsquare(self):
+    def test_manual_matrix_mul_nonsquare(self) -> None:
         """Verify _mat_mul handles non-square matrices correctly."""
         A = np.zeros((2, 3))
         A[0, 0] = 1.0
@@ -39,7 +41,7 @@ class TestJITAndVectorization(unittest.TestCase):
 
         np.testing.assert_array_almost_equal(result, expected)
 
-    def test_matrix_exp_properties(self):
+    def test_matrix_exp_properties(self) -> None:
         """
         Verify properties of Matrix Exponential e^A.
         1. e^(A+B) = e^A * e^B if AB = BA (e.g. diagonal matrices)
@@ -59,14 +61,14 @@ class TestJITAndVectorization(unittest.TestCase):
         exp_traceA = np.exp(np.trace(A))
         self.assertAlmostEqual(det_expA, exp_traceA)
 
-    def test_ekf_vectorization_throughput(self):
+    def test_ekf_vectorization_throughput(self) -> None:
         """
         Verify that the vectorized EKF Jacobian computation returns
         the correct shape and values for a larger state vector.
         """
         x0 = np.arange(10, dtype=float)
 
-        def f_vec(x, u=None):
+        def f_vec(x: NDArray[np.float64], u: Optional[Any] = None) -> NDArray[Any]:
             return 2.0 * x
 
         h = lambda x: x

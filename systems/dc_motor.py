@@ -357,7 +357,7 @@ class DCMotor:
 
             return np.array([omega_next, current_next])
 
-        def measurement_model(x) -> NDArray[np.float64]:
+        def measurement_model(x: NDArray[np.float64]) -> NDArray[np.float64]:
             return x
 
         return motor_stiction_dynamics, measurement_model

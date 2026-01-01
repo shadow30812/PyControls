@@ -1,6 +1,7 @@
 import unittest
 
 import numpy as np
+from numpy.typing import NDArray
 
 from core.control_utils import Check, PIDController, dlqr, solve_discrete_riccati
 
@@ -11,35 +12,35 @@ class TestDiscreteRiccati(unittest.TestCase):
     Tests only guaranteed mathematical properties.
     """
 
-    def setUp(self):
-        self.A = np.array([[1.0]])
-        self.B = np.array([[1.0]])
-        self.Q = np.array([[1.0]])
-        self.R = np.array([[1.0]])
+    def setUp(self) -> None:
+        self.A: NDArray[np.float64] = np.array([[1.0]])
+        self.B: NDArray[np.float64] = np.array([[1.0]])
+        self.Q: NDArray[np.float64] = np.array([[1.0]])
+        self.R: NDArray[np.float64] = np.array([[1.0]])
 
-    def test_solution_shape(self):
+    def test_solution_shape(self) -> None:
         P = solve_discrete_riccati(self.A, self.B, self.Q, self.R)
         self.assertEqual(P.shape, (1, 1))
 
-    def test_solution_symmetric(self):
+    def test_solution_symmetric(self) -> None:
         P = solve_discrete_riccati(self.A, self.B, self.Q, self.R)
         np.testing.assert_allclose(P, P.T, atol=1e-10)
 
-    def test_solution_finite(self):
+    def test_solution_finite(self) -> None:
         P = solve_discrete_riccati(self.A, self.B, self.Q, self.R)
         self.assertTrue(np.all(np.isfinite(P)))
 
-    def test_solution_positive_semidefinite(self):
+    def test_solution_positive_semidefinite(self) -> None:
         P = solve_discrete_riccati(self.A, self.B, self.Q, self.R)
         eigs = np.linalg.eigvals(P)
         self.assertTrue(np.all(eigs.real >= -1e-10))
 
-    def test_zero_cost_returns_zero(self):
+    def test_zero_cost_returns_zero(self) -> None:
         Q = np.zeros((1, 1))
         P = solve_discrete_riccati(self.A, self.B, Q, self.R)
         np.testing.assert_array_almost_equal(P, np.zeros_like(P))
 
-    def test_deterministic(self):
+    def test_deterministic(self) -> None:
         P1 = solve_discrete_riccati(self.A, self.B, self.Q, self.R)
         P2 = solve_discrete_riccati(self.A, self.B, self.Q, self.R)
         np.testing.assert_array_equal(P1, P2)
@@ -51,7 +52,7 @@ class TestDiscreteRiccatiRegression(unittest.TestCase):
     These tests lock in numerical correctness and stability guarantees.
     """
 
-    def test_riccati_solution_properties(self):
+    def test_riccati_solution_properties(self) -> None:
         """
         Regression test:
         - P must be symmetric
@@ -84,21 +85,21 @@ class TestDLQR(unittest.TestCase):
     Tests for discrete-time LQR gain computation.
     """
 
-    def setUp(self):
-        self.A = np.array([[1.0]])
-        self.B = np.array([[1.0]])
-        self.Q = np.array([[1.0]])
-        self.R = np.array([[1.0]])
+    def setUp(self) -> None:
+        self.A: NDArray[np.float64] = np.array([[1.0]])
+        self.B: NDArray[np.float64] = np.array([[1.0]])
+        self.Q: NDArray[np.float64] = np.array([[1.0]])
+        self.R: NDArray[np.float64] = np.array([[1.0]])
 
-    def test_gain_shape(self):
+    def test_gain_shape(self) -> None:
         K = dlqr(self.A, self.B, self.Q, self.R)
         self.assertEqual(K.shape, (1, 1))
 
-    def test_gain_finite(self):
+    def test_gain_finite(self) -> None:
         K = dlqr(self.A, self.B, self.Q, self.R)
         self.assertTrue(np.all(np.isfinite(K)))
 
-    def test_closed_loop_stability(self):
+    def test_closed_loop_stability(self) -> None:
         """
         For scalar stable LQR, closed-loop pole magnitude < 1 is guaranteed.
         """
@@ -107,60 +108,60 @@ class TestDLQR(unittest.TestCase):
         eigs = np.linalg.eigvals(A_cl)
         self.assertTrue(np.all(np.abs(eigs) < 1.0))
 
-    def test_deterministic(self):
+    def test_deterministic(self) -> None:
         K1 = dlqr(self.A, self.B, self.Q, self.R)
         K2 = dlqr(self.A, self.B, self.Q, self.R)
         np.testing.assert_array_equal(K1, K2)
 
 
 class TestControllabilityObservability(unittest.TestCase):
-    def test_controllable_system(self):
+    def test_controllable_system(self) -> None:
         A = np.array([[0, 1], [0, 0]])
         B = np.array([[0], [1]])
 
         self.assertTrue(Check().is_controllable(A, B))
 
-    def test_uncontrollable_system(self):
+    def test_uncontrollable_system(self) -> None:
         A = np.array([[1, 0], [0, 2]])
         B = np.array([[1], [0]])
 
         self.assertFalse(Check().is_controllable(A, B))
 
-    def test_observable_system(self):
+    def test_observable_system(self) -> None:
         A = np.array([[0, 1], [0, 0]])
         B = np.array([[1, 0]])
 
         self.assertTrue(Check().is_observable(A, B))
 
-    def test_unobservable_system(self):
+    def test_unobservable_system(self) -> None:
         A = np.array([[1, 0], [0, 2]])
         B = np.array([[0, 1]])
 
         self.assertFalse(Check().is_observable(A, B))
 
-    def test_controllability_matrix_shape(self):
+    def test_controllability_matrix_shape(self) -> None:
         A = np.eye(3)
         B = np.ones((3, 1))
 
         Cm = Check().controllability_matrix(A, B)
         self.assertEqual(Cm.shape, (3, 3))
 
-    def test_observability_matrix_shape(self):
+    def test_observability_matrix_shape(self) -> None:
         A = np.eye(3)
         B = np.ones((1, 3))
 
         Om = Check().observability_matrix(A, B)
         self.assertEqual(Om.shape, (3, 3))
 
-    def test_basic_identity(self):
+    def test_basic_identity(self) -> None:
         I = np.eye(4)
         self.assertEqual(Check()._matrix_rank(I), 4)
 
-    def test_rank_deficient(self):
+    def test_rank_deficient(self) -> None:
         M = np.array([[1, 2, 3], [1, 2, 3], [4, 5, 6]])
         self.assertEqual(Check()._matrix_rank(M), 2)
 
-    def test_atol_dominance(self):
+    def test_atol_dominance(self) -> None:
         M = np.eye(3) * 1e-8
 
         rank = Check()._matrix_rank(M, atol=1e-7, rtol=0)
@@ -169,13 +170,13 @@ class TestControllabilityObservability(unittest.TestCase):
         rank = Check()._matrix_rank(M, atol=1e-9, rtol=0)
         self.assertEqual(rank, 3)
 
-    def test_rtol_dominance(self):
+    def test_rtol_dominance(self) -> None:
         S = np.diag([1000, 1000, 0.1])
 
         rank = Check()._matrix_rank(S, atol=1e-15, rtol=1e-3)
         self.assertEqual(rank, 2)
 
-    def test_numpy_consistency(self):
+    def test_numpy_consistency(self) -> None:
         rng = np.random.default_rng(42)
         M = rng.random((10, 10))
 
@@ -191,23 +192,23 @@ class TestPIDController(unittest.TestCase):
     Tests only behaviors explicitly guaranteed by implementation.
     """
 
-    def test_zero_gains_zero_output(self):
+    def test_zero_gains_zero_output(self) -> None:
         pid = PIDController(0.0, 0.0, 0.0)
         u = pid.update(measurement=1.0, setpoint=1.0, dt=0.1)
         self.assertEqual(u, 0.0)
 
-    def test_proportional_only(self):
+    def test_proportional_only(self) -> None:
         pid = PIDController(Kp=2.0, Ki=0.0, Kd=0.0)
         u = pid.update(measurement=1.0, setpoint=2.0, dt=0.1)
         self.assertAlmostEqual(u, 2.0)
 
-    def test_integral_accumulation(self):
+    def test_integral_accumulation(self) -> None:
         pid = PIDController(Kp=0.0, Ki=1.0, Kd=0.0)
         pid.update(0.0, 1.0, 0.1)
         u = pid.update(0.0, 1.0, 0.1)
         self.assertAlmostEqual(u, 0.2)
 
-    def test_derivative_on_measurement_response(self):
+    def test_derivative_on_measurement_response(self) -> None:
         pid = PIDController(Kp=0.0, Ki=0.0, Kd=1.0, derivative_on_measurement=True)
 
         u1 = pid.update(measurement=0.0, setpoint=0.0, dt=0.1)
@@ -215,7 +216,7 @@ class TestPIDController(unittest.TestCase):
 
         self.assertNotEqual(u2, u1)
 
-    def test_derivative_on_error_response(self):
+    def test_derivative_on_error_response(self) -> None:
         pid = PIDController(Kp=0.0, Ki=0.0, Kd=1.0, derivative_on_measurement=False)
 
         u1 = pid.update(measurement=0.0, setpoint=1.0, dt=0.1)
@@ -223,7 +224,7 @@ class TestPIDController(unittest.TestCase):
 
         self.assertNotEqual(u2, u1)
 
-    def test_derivative_on_measurement_sign(self):
+    def test_derivative_on_measurement_sign(self) -> None:
         pid = PIDController(Kp=0.0, Ki=0.0, Kd=1.0, derivative_on_measurement=True)
         pid.reset()
 
@@ -232,7 +233,7 @@ class TestPIDController(unittest.TestCase):
 
         self.assertLess(u2, u1)
 
-    def test_derivative_on_error_sign(self):
+    def test_derivative_on_error_sign(self) -> None:
         pid = PIDController(Kp=0.0, Ki=0.0, Kd=1.0, derivative_on_measurement=False)
         pid.reset()
 
@@ -241,7 +242,7 @@ class TestPIDController(unittest.TestCase):
 
         self.assertLess(u2, u1)
 
-    def test_derivative_filter_smoothing(self):
+    def test_derivative_filter_smoothing(self) -> None:
         pid = PIDController(Kp=0.0, Ki=0.0, Kd=1.0, tau=0.5)
 
         u1 = pid.update(0.0, 0.0, 0.1)
@@ -249,12 +250,12 @@ class TestPIDController(unittest.TestCase):
 
         self.assertTrue(abs(u2) < abs((10.0 / 0.1)))
 
-    def test_output_limits(self):
+    def test_output_limits(self) -> None:
         pid = PIDController(Kp=10.0, Ki=0.0, Kd=0.0, output_limits=(-1.0, 1.0))
         u = pid.update(measurement=0.0, setpoint=1.0, dt=0.1)
         self.assertEqual(u, 1.0)
 
-    def test_output_limits_after_reset(self):
+    def test_output_limits_after_reset(self) -> None:
         pid = PIDController(
             Kp=10.0,
             Ki=0.0,
@@ -267,7 +268,7 @@ class TestPIDController(unittest.TestCase):
         self.assertLessEqual(u, 1.0)
         self.assertGreaterEqual(u, -1.0)
 
-    def test_reset_clears_internal_state(self):
+    def test_reset_clears_internal_state(self) -> None:
         pid = PIDController(Kp=1.0, Ki=1.0, Kd=1.0)
         pid.update(0.0, 1.0, 0.1)
         pid.reset()
@@ -275,12 +276,12 @@ class TestPIDController(unittest.TestCase):
         self.assertEqual(pid.prev_value, 0.0)
         self.assertEqual(pid.prev_derivative, 0.0)
 
-    def test_zero_dt_returns_zero(self):
+    def test_zero_dt_returns_zero(self) -> None:
         pid = PIDController(1.0, 1.0, 1.0)
         u = pid.update(1.0, 1.0, 0.0)
         self.assertEqual(u, 0.0)
 
-    def test_zero_dt_returns_zero_after_reset(self):
+    def test_zero_dt_returns_zero_after_reset(self) -> None:
         pid = PIDController(1.0, 1.0, 1.0)
         pid.reset()
 

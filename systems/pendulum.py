@@ -323,7 +323,9 @@ class InvertedPendulum:
         """
         return np.array([x[0], x[2]])
 
-    def measurement_jacobian(self, x: NDArray[np.float64]) -> NDArray[np.float64]:
+    def measurement_jacobian(
+        self, x: Optional[NDArray[np.float64]]
+    ) -> NDArray[np.float64]:
         """
         Computes the Jacobian matrix H of the measurement function h(x).
         Since h(x) is linear mapping states 0 and 2, H is constant.

@@ -126,7 +126,7 @@ CUSTOM_SIM_PARAMS: Dict[str, Any] = {
     "initial_state": (1, 1),
 }
 
-ESTIMATION_PARAMS: Dict[str, Any] = {
+MOTOR_ESTIMATION_PARAMS: Dict[str, Any] = {
     "dt": 0.001,
     "t_end": 15.0,
     "true_system_params": {
@@ -361,7 +361,7 @@ Parameters:
 - initial_state: Tuple (rows, cols) defining the state vector shape.
 
 --------------------------------------------------------------------------------
-7. ESTIMATION_PARAMS (EKF Demo) & PENDULUM_ESTIMATION_PARAMS
+7. MOTOR_ESTIMATION_PARAMS & PENDULUM_ESTIMATION_PARAMS
 --------------------------------------------------------------------------------
 Configuration for Option 6 Parameter Estimation.
 

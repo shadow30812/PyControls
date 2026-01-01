@@ -12,23 +12,23 @@ class TestModels(unittest.TestCase):
     Unit Tests for TransferFunction and StateSpace containers.
     """
 
-    def test_tf_init_padding(self):
+    def test_tf_init_padding(self) -> None:
         tf = TransferFunction([1], [1, 2, 3])
         self.assertEqual(tf.num.dtype, float)
         self.assertEqual(len(tf.num), 1)
 
-    def test_tf_evaluate(self):
+    def test_tf_evaluate(self) -> None:
         tf = TransferFunction([1], [1, 1])
         self.assertEqual(tf.evaluate(0), 1.0)
         self.assertEqual(tf.evaluate(-1), np.inf)
 
-    def test_tf_to_state_space_simple(self):
+    def test_tf_to_state_space_simple(self) -> None:
         tf = TransferFunction([1], [1, 2])
         A, B, C, D = tf.to_state_space()
         self.assertEqual(A.shape, (1, 1))
         self.assertEqual(B[0, 0], 1.0)
 
-    def test_ss_init_valid(self):
+    def test_ss_init_valid(self) -> None:
         A = np.eye(2)
         B = np.zeros((2, 1))
         C = np.zeros((1, 2))
@@ -36,7 +36,7 @@ class TestModels(unittest.TestCase):
         ss = StateSpace(A, B, C, D)
         self.assertEqual(ss.n_states, 2)
 
-    def test_ss_init_invalid_shapes(self):
+    def test_ss_init_invalid_shapes(self) -> None:
         with self.assertRaises(DimensionMismatchError):
             StateSpace(
                 np.ones((2, 3)), np.zeros((2, 1)), np.zeros((1, 2)), np.zeros((1, 1))
@@ -48,7 +48,7 @@ class TestModels(unittest.TestCase):
         with self.assertRaises(DimensionMismatchError):
             StateSpace(np.eye(2), np.zeros((2, 1)), np.zeros((1, 3)), np.zeros((1, 1)))
 
-    def test_ss_freq_response_integrator(self):
+    def test_ss_freq_response_integrator(self) -> None:
         ss = StateSpace([[0]], [[1]], [[1]], [[0]])
         mags, phases = ss.get_frequency_response([1.0])
         self.assertAlmostEqual(phases[0], -90.0)
@@ -57,7 +57,7 @@ class TestModels(unittest.TestCase):
 class TestStateSpaceExtended(unittest.TestCase):
     """Extended, non-fragile contract tests for StateSpace."""
 
-    def test_mimo_frequency_response_shapes(self):
+    def test_mimo_frequency_response_shapes(self) -> None:
         A = np.zeros((2, 2))
         B = np.eye(2)
         C = np.eye(2)
@@ -70,7 +70,7 @@ class TestStateSpaceExtended(unittest.TestCase):
         self.assertEqual(mags.shape, omega.shape)
         self.assertEqual(phases.shape, omega.shape)
 
-    def test_frequency_response_invalid_indices(self):
+    def test_frequency_response_invalid_indices(self) -> None:
         A = np.zeros((1, 1))
         B = np.ones((1, 1))
         C = np.ones((1, 1))
@@ -83,7 +83,7 @@ class TestStateSpaceExtended(unittest.TestCase):
         with self.assertRaises(ValueError):
             ss.get_frequency_response([1.0], output_idx=2)
 
-    def test_frequency_response_d_matrix_only(self):
+    def test_frequency_response_d_matrix_only(self) -> None:
         A = np.zeros((1, 1))
         B = np.zeros((1, 1))
         C = np.zeros((1, 1))
@@ -95,7 +95,7 @@ class TestStateSpaceExtended(unittest.TestCase):
         self.assertTrue(np.allclose(mags, 20 * np.log10(2.0)))
         self.assertTrue(np.allclose(phases, 0.0))
 
-    def test_frequency_response_singularity_handling(self):
+    def test_frequency_response_singularity_handling(self) -> None:
         A = np.array([[0.0]])
         B = np.array([[1.0]])
         C = np.array([[1.0]])
@@ -111,7 +111,7 @@ class TestStateSpaceExtended(unittest.TestCase):
 class TestTransferFunctionExtended(unittest.TestCase):
     """Extended, non-fragile contract tests for TransferFunction."""
 
-    def test_repr_contains_original_coefficients(self):
+    def test_repr_contains_original_coefficients(self) -> None:
         num = [1, 2]
         den = [3, 4, 5]
         tf = TransferFunction(num, den)
@@ -120,21 +120,21 @@ class TestTransferFunctionExtended(unittest.TestCase):
         self.assertIn(str(num), rep)
         self.assertIn(str(den), rep)
 
-    def test_evaluate_matches_polyval(self):
+    def test_evaluate_matches_polyval(self) -> None:
         num = [1, 0]
         den = [1, 1]
         tf = TransferFunction(num, den)
 
         s = 1 + 1j
         expected = np.polyval(num, s) / np.polyval(den, s)
-        self.assertAlmostEqual(tf.evaluate(s), expected)
+        self.assertAlmostEqual(tf.evaluate(s), expected, delta=1e-9)
 
-    def test_evaluate_zero_denominator(self):
+    def test_evaluate_zero_denominator(self) -> None:
         tf = TransferFunction([1.0], [0.0])
         val = tf.evaluate(1.0)
         self.assertEqual(val, np.inf)
 
-    def test_bode_response_consistency(self):
+    def test_bode_response_consistency(self) -> None:
         tf = TransferFunction([1.0], [1.0, 1.0])
         omega = np.array([0.1, 1.0, 10.0])
 
@@ -146,7 +146,7 @@ class TestTransferFunctionExtended(unittest.TestCase):
             self.assertAlmostEqual(mags[i], 20 * np.log10(abs(resp)))
             self.assertAlmostEqual(phases[i], np.degrees(np.angle(resp)))
 
-    def test_to_state_space_shapes(self):
+    def test_to_state_space_shapes(self) -> None:
         tf = TransferFunction([1.0], [1.0, 2.0, 3.0])
         A, B, C, D = tf.to_state_space()
 
@@ -155,7 +155,7 @@ class TestTransferFunctionExtended(unittest.TestCase):
         self.assertEqual(C.shape, (1, 2))
         self.assertTrue(np.isscalar(D) or np.shape(D) == ())
 
-    def test_to_state_space_companion_structure(self):
+    def test_to_state_space_companion_structure(self) -> None:
         tf = TransferFunction([1.0], [1.0, 2.0, 3.0])
         A, _, _, _ = tf.to_state_space()
 

@@ -11,48 +11,48 @@ class TestAnalysis(unittest.TestCase):
     Unit tests for control system analysis tools.
     """
 
-    def test_margins_stable_3rd_order(self):
+    def test_margins_stable_3rd_order(self) -> None:
         tf = TransferFunction([8], [1, 6, 11, 6])
         gm, pm, w_pc, w_gc = get_stability_margins(tf, w_start=-1, w_end=2)
 
         self.assertGreater(gm, 0)
         self.assertGreater(pm, 0)
 
-    def test_margins_unstable(self):
+    def test_margins_unstable(self) -> None:
         tf = TransferFunction([1], [1, -1])
         try:
             get_stability_margins(tf)
         except Exception as e:
             print("Skipped analysis test", e, sep="\n")
 
-    def test_margins_infinite(self):
+    def test_margins_infinite(self) -> None:
         tf = TransferFunction([1], [1, 1])
         gm, pm, w_pc, w_gc = get_stability_margins(tf)
         self.assertEqual(gm, np.inf)
         self.assertGreater(pm, 0)
 
-    def test_step_metrics_ideal(self):
+    def test_step_metrics_ideal(self) -> None:
         t = np.linspace(0, 10, 100)
         y = np.clip(t, 0, 1)
         tr, os, st = get_step_metrics(t, y)
         self.assertAlmostEqual(tr, 0.8, delta=0.1)
         self.assertEqual(os, 0.0)
 
-    def test_margins_pure_integrator(self):
+    def test_margins_pure_integrator(self) -> None:
         tf = TransferFunction([1], [1, 0])
         gm, pm, w_pc, w_gc = get_stability_margins(tf)
 
         self.assertEqual(gm, np.inf)
         self.assertTrue(pm > 0 or pm == np.inf)
 
-    def test_margins_double_integrator(self):
+    def test_margins_double_integrator(self) -> None:
         tf = TransferFunction([1], [1, 0, 0])
         gm, pm, w_pc, w_gc = get_stability_margins(tf)
 
         self.assertTrue(np.isinf(gm) or gm >= 0)
         self.assertTrue(np.isinf(pm) or pm >= 0)
 
-    def test_step_metrics_constant_response(self):
+    def test_step_metrics_constant_response(self) -> None:
         t = np.linspace(0, 5, 50)
         y = np.ones_like(t)
 
@@ -61,7 +61,7 @@ class TestAnalysis(unittest.TestCase):
         self.assertEqual(tr, 0)
         self.assertEqual(os, 0)
 
-    def test_step_metrics_monotonic(self):
+    def test_step_metrics_monotonic(self) -> None:
         t = np.linspace(0, 10, 200)
         y = 1 - np.exp(-t)
 
@@ -70,7 +70,7 @@ class TestAnalysis(unittest.TestCase):
         self.assertEqual(os, 0.0)
         self.assertGreaterEqual(tr, 0.0)
 
-    def test_step_metrics_undershoot(self):
+    def test_step_metrics_undershoot(self) -> None:
         t = np.linspace(0, 10, 200)
         y = 1 - 1.2 * np.exp(-t)
 
@@ -78,7 +78,7 @@ class TestAnalysis(unittest.TestCase):
 
         self.assertLessEqual(os, 0.0)
 
-    def test_exact_time_idx_exact_hit(self):
+    def test_exact_time_idx_exact_hit(self) -> None:
         time = np.array([0.0, 1.0, 2.0])
         response = np.array([0.0, 1.0, 2.0])
 
@@ -86,7 +86,7 @@ class TestAnalysis(unittest.TestCase):
 
         self.assertEqual(t_hit, 1.0)
 
-    def test_exact_time_idx_flat_segment(self):
+    def test_exact_time_idx_flat_segment(self) -> None:
         time = np.array([0.0, 1.0, 2.0])
         response = np.array([1.0, 1.0, 2.0])
 
@@ -103,21 +103,21 @@ class TestEigenAndStabilityAnalysis(unittest.TestCase):
     - numerical robustness
     """
 
-    def test_margins_return_finite_or_inf(self):
+    def test_margins_return_finite_or_inf(self) -> None:
         tf = TransferFunction([1], [1, 3, 2])
         gm, pm, w_pc, w_gc = get_stability_margins(tf)
 
         for val in (gm, pm, w_pc, w_gc):
             self.assertFalse(np.isnan(val))
 
-    def test_no_crossing_returns_inf_margins(self):
+    def test_no_crossing_returns_inf_margins(self) -> None:
         tf = TransferFunction([1], [1, 1])
         gm, pm, w_pc, w_gc = get_stability_margins(tf)
 
         self.assertEqual(gm, np.inf)
         self.assertEqual(w_pc, 0.0)
 
-    def test_step_metrics_monotonic_response(self):
+    def test_step_metrics_monotonic_response(self) -> None:
         t = np.linspace(0, 5, 200)
         y = 1.0 - np.exp(-t)
 
@@ -126,7 +126,7 @@ class TestEigenAndStabilityAnalysis(unittest.TestCase):
         self.assertEqual(os, 0.0)
         self.assertGreaterEqual(tr, 0.0)
 
-    def test_step_metrics_handles_flat_response(self):
+    def test_step_metrics_handles_flat_response(self) -> None:
         t = np.linspace(0, 5, 100)
         y = np.zeros_like(t)
 
@@ -136,7 +136,7 @@ class TestEigenAndStabilityAnalysis(unittest.TestCase):
         self.assertEqual(os, 0)
         self.assertEqual(st, 0)
 
-    def test_step_metrics_finite_output(self):
+    def test_step_metrics_finite_output(self) -> None:
         t = np.linspace(0, 10, 500)
         y = np.tanh(t)
 

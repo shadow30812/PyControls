@@ -1,6 +1,7 @@
 import unittest
 
 import numpy as np
+from numpy.typing import NDArray
 
 from core.solver import ExactSolver, NonlinearSolver, _mat_mul, manual_matrix_exp
 
@@ -11,7 +12,7 @@ class TestSolvers(unittest.TestCase):
     Checks JIT compilation and Vectorization logic.
     """
 
-    def test_exact_solver_init(self):
+    def test_exact_solver_init(self) -> None:
         A = [[0]]
         B = [[1]]
         C = [[1]]
@@ -22,13 +23,13 @@ class TestSolvers(unittest.TestCase):
         self.assertEqual(s.Phi[0, 0], 1.0)
         self.assertAlmostEqual(s.Gamma[0, 0], 0.1)
 
-    def test_exact_solver_step_scalar(self):
+    def test_exact_solver_step_scalar(self) -> None:
         s = ExactSolver([[0]], [[1]], [[1]], [[0]], 0.1)
         y = s.step(10.0)
-        self.assertAlmostEqual(s.x[0, 0], 1.0)
-        self.assertAlmostEqual(y, 1.0)
+        self.assertAlmostEqual(s.x[0, 0], 1.0, delta=1e-9)
+        self.assertAlmostEqual(y, 1.0, delta=1e-9)
 
-    def test_exact_solver_step_vector(self):
+    def test_exact_solver_step_vector(self) -> None:
         """Test MIMO system steps."""
         A = np.eye(2)
         B = np.eye(2)
@@ -40,14 +41,14 @@ class TestSolvers(unittest.TestCase):
         s.step(u)
         self.assertEqual(s.x.shape, (2, 1))
 
-    def test_exact_solver_reset(self):
+    def test_exact_solver_reset(self) -> None:
         s = ExactSolver([[0]], [[1]], [[1]], [[0]], 0.1)
         s.step(1.0)
         self.assertNotEqual(s.x[0, 0], 0.0)
         s.reset()
         self.assertEqual(s.x[0, 0], 0.0)
 
-    def test_nonlinear_solver_decay(self):
+    def test_nonlinear_solver_decay(self) -> None:
         """Test x_dot = -x."""
         f = lambda t, x, u: -x
         solver = NonlinearSolver(f, dt_min=0.01, dt_max=0.1, tol=1e-5)
@@ -56,13 +57,13 @@ class TestSolvers(unittest.TestCase):
         expected = np.exp(-1.0)
         self.assertAlmostEqual(x[-1, 0], expected, places=4)
 
-    def test_nonlinear_solver_vectorized_stages(self):
+    def test_nonlinear_solver_vectorized_stages(self) -> None:
         """
         Implicitly tests the vectorized inner loop of RK45.
         We use a system size > 1 to ensure matrix ops work.
         """
 
-        def decay_3d(t, x, u):
+        def decay_3d(t: float, x: NDArray[np.float64], u: float) -> NDArray[np.float64]:
             rates = np.array([-1, -2, -3])
             if x.ndim == 2:
                 x = x.flatten()
@@ -80,7 +81,7 @@ class TestSolvers(unittest.TestCase):
         self.assertAlmostEqual(final_x[1], np.exp(-2), places=4)
         self.assertAlmostEqual(final_x[2], np.exp(-3), places=4)
 
-    def test_nonlinear_solver_input_func(self):
+    def test_nonlinear_solver_input_func(self) -> None:
         """Test x_dot = u(t)."""
         f = lambda t, x, u: np.array([u])
         u_func = lambda t: t
@@ -90,10 +91,10 @@ class TestSolvers(unittest.TestCase):
 
         self.assertAlmostEqual(x[-1, 0], 2.0, places=4)
 
-    def test_nonlinear_solver_oscillator(self):
+    def test_nonlinear_solver_oscillator(self) -> None:
         """Test harmonic oscillator x'' = -x."""
 
-        def f(t, x, u):
+        def f(t: float, x: NDArray[np.float64], u: float) -> NDArray[np.float64]:
             return np.array([x[1], -x[0]])
 
         solver = NonlinearSolver(f)
@@ -102,10 +103,10 @@ class TestSolvers(unittest.TestCase):
         self.assertAlmostEqual(x[-1, 0], 1.0, places=4)
         self.assertAlmostEqual(x[-1, 1], 0.0, places=4)
 
-    def test_nonlinear_solver_stiff_handling(self):
+    def test_nonlinear_solver_stiff_handling(self) -> None:
         """Ensure solver reduces dt for stiff segments."""
 
-        def stiff(t, x, u):
+        def stiff(t: float, x: NDArray[np.float64], u: float) -> NDArray[np.float64]:
             if 0.4 < t < 0.6:
                 return np.array([100.0])
             return np.array([1.0])
@@ -116,7 +117,7 @@ class TestSolvers(unittest.TestCase):
         dts = np.diff(t)
         self.assertTrue(np.any(dts < 0.09))
 
-    def test_manual_matrix_exp_numba_gate(self):
+    def test_manual_matrix_exp_numba_gate(self) -> None:
         A = np.array([[0.1, 0.2], [0.0, -0.1]])
         res = manual_matrix_exp(A)
         self.assertEqual(res.shape, (2, 2))
@@ -129,7 +130,7 @@ class TestSolverExtendedContracts(unittest.TestCase):
     by the solver APIs (not numerical coincidences).
     """
 
-    def test_mat_mul_with_views(self):
+    def test_mat_mul_with_views(self) -> None:
         A = np.arange(16.0).reshape(4, 4)
         B = np.eye(4)
         A_view = A[::2, ::2]
@@ -137,33 +138,32 @@ class TestSolverExtendedContracts(unittest.TestCase):
 
         expected = A_view @ B_view
         result = _mat_mul(A_view, B_view)
-
         np.testing.assert_allclose(result, expected)
 
-    def test_mat_mul_zero_columns(self):
+    def test_mat_mul_zero_columns(self) -> None:
         A = np.zeros((3, 0))
         B = np.zeros((0, 2))
         result = _mat_mul(A, B)
         self.assertEqual(result.shape, (3, 2))
         self.assertTrue(np.all(result == 0.0))
 
-    def test_matrix_exp_identity(self):
+    def test_matrix_exp_identity(self) -> None:
         I = np.eye(3)
         E = manual_matrix_exp(I * 0.0)
         np.testing.assert_allclose(E, np.eye(3))
 
-    def test_matrix_exp_zero(self):
+    def test_matrix_exp_zero(self) -> None:
         Z = np.zeros((4, 4))
         E = manual_matrix_exp(Z)
         np.testing.assert_allclose(E, np.eye(4))
 
-    def test_matrix_exp_small_norm(self):
+    def test_matrix_exp_small_norm(self) -> None:
         A = np.array([[1e-6, 0.0], [0.0, -1e-6]])
         E = manual_matrix_exp(A)
         expected = np.eye(2) + A
         np.testing.assert_allclose(E, expected, rtol=1e-10, atol=1e-12)
 
-    def test_matrix_exp_order_override_convergence(self):
+    def test_matrix_exp_order_override_convergence(self) -> None:
         A = np.array([[0.2, 0.1], [0.0, -0.1]])
 
         E1 = manual_matrix_exp(A, order=1)
@@ -175,7 +175,7 @@ class TestSolverExtendedContracts(unittest.TestCase):
 
         self.assertGreater(diff_12, diff_26)
 
-    def test_exact_solver_mimo_output_shape(self):
+    def test_exact_solver_mimo_output_shape(self) -> None:
         A = np.zeros((2, 2))
         B = np.eye(2)
         C = np.eye(2)
@@ -183,9 +183,10 @@ class TestSolverExtendedContracts(unittest.TestCase):
         solver = ExactSolver(A, B, C, D, dt=0.5)
 
         y = solver.step(np.array([1.0, 2.0]))
+        assert isinstance(y, np.ndarray)
         self.assertEqual(y.shape, (2,))
 
-    def test_exact_solver_d_matrix_effect(self):
+    def test_exact_solver_d_matrix_effect(self) -> None:
         A = [[0]]
         B = [[0]]
         C = [[1]]
@@ -195,19 +196,19 @@ class TestSolverExtendedContracts(unittest.TestCase):
         y = solver.step(3.0)
         self.assertEqual(y, 6.0)
 
-    def test_exact_solver_multiple_steps_deterministic(self):
+    def test_exact_solver_multiple_steps_deterministic(self) -> None:
         solver = ExactSolver([[0]], [[1]], [[1]], [[0]], 0.1)
         y1 = solver.step(1.0)
         y2 = solver.step(1.0)
-        self.assertAlmostEqual(y2, 2 * y1)
+        self.assertAlmostEqual(float(y2), 2 * float(y1))
 
-    def test_exact_solver_zero_dynamics(self):
+    def test_exact_solver_zero_dynamics(self) -> None:
         solver = ExactSolver([[0]], [[0]], [[1]], [[0]], 1.0)
         y = solver.step(10.0)
         self.assertEqual(y, 0.0)
 
-    def test_nonlinear_solver_dt_min_enforced(self):
-        def stiff(t, x, u):
+    def test_nonlinear_solver_dt_min_enforced(self) -> None:
+        def stiff(t: float, x: NDArray[np.float64], u: float) -> NDArray[np.float64]:
             return np.array([1e6])
 
         solver = NonlinearSolver(stiff, dt_min=1e-3, dt_max=1.0, tol=1e-12)
@@ -215,8 +216,8 @@ class TestSolverExtendedContracts(unittest.TestCase):
         dts = np.diff(t)
         self.assertTrue(np.all(dts >= 1e-3))
 
-    def test_nonlinear_solver_dt_max_reasonable(self):
-        def slow(t, x, u):
+    def test_nonlinear_solver_dt_max_reasonable(self) -> None:
+        def slow(t: float, x: NDArray[np.float64], u: float) -> NDArray[np.float64]:
             return np.array([0.0])
 
         dt_max = 0.05
@@ -227,24 +228,24 @@ class TestSolverExtendedContracts(unittest.TestCase):
 
         self.assertLessEqual(np.max(dts), dt_max * 1.01)
 
-    def test_nonlinear_solver_zero_error_branch(self):
-        def constant(t, x, u):
+    def test_nonlinear_solver_zero_error_branch(self) -> None:
+        def constant(t: float, x: NDArray[np.float64], u: float) -> NDArray[np.float64]:
             return np.array([1.0])
 
         solver = NonlinearSolver(constant)
         t, _ = solver.solve_adaptive(0.2, np.array([0.0]))
         self.assertGreater(np.max(np.diff(t)), solver.dt_min)
 
-    def test_nonlinear_solver_column_vector_input(self):
-        def decay(t, x, u):
+    def test_nonlinear_solver_column_vector_input(self) -> None:
+        def decay(t: float, x: NDArray[np.float64], u: float) -> NDArray[np.float64]:
             return -x
 
         solver = NonlinearSolver(decay)
         t, x = solver.solve_adaptive(1.0, np.array([[1.0]]))
         self.assertEqual(x.shape[1], 1)
 
-    def test_nonlinear_solver_time_monotonicity(self):
-        def f(t, x, u):
+    def test_nonlinear_solver_time_monotonicity(self) -> None:
+        def f(t: float, x: NDArray[np.float64], u: float) -> NDArray[np.float64]:
             return -x
 
         solver = NonlinearSolver(f)

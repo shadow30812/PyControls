@@ -2,6 +2,7 @@ import time
 import unittest
 
 import numpy as np
+from numpy.typing import NDArray
 
 from core.mpc import ModelPredictiveControl
 from core.ukf import UnscentedKalmanFilter
@@ -13,7 +14,7 @@ class TestAdvancedControl(unittest.TestCase):
     Updated to support the new ADMM (Linear) and iLQR (Nonlinear) solvers.
     """
 
-    def test_ukf_sigma_points_generation(self):
+    def test_ukf_sigma_points_generation(self) -> None:
         """Verify sigma points are generated symmetrically around the mean."""
         x0 = np.array([1.0, 2.0])
         P0 = np.eye(2)
@@ -33,7 +34,7 @@ class TestAdvancedControl(unittest.TestCase):
         mean_rest = np.mean(sigmas[1:], axis=0)
         np.testing.assert_array_almost_equal(mean_rest, x0)
 
-    def test_ukf_convergence_linear(self):
+    def test_ukf_convergence_linear(self) -> None:
         """Verify UKF converges on a simple linear problem."""
         f = lambda x, u, dt: x
         h = lambda x: x
@@ -52,7 +53,7 @@ class TestAdvancedControl(unittest.TestCase):
 
         self.assertAlmostEqual(ukf.x[0], 5.0, places=1)
 
-    def test_ukf_nonlinear_transform(self):
+    def test_ukf_nonlinear_transform(self) -> None:
         """Verify UKF handles a non-linear transform better than linearization."""
         f = lambda x, u, dt: x**2
         h = lambda x: x
@@ -65,7 +66,7 @@ class TestAdvancedControl(unittest.TestCase):
 
         self.assertGreater(ukf.x[0], 4.05)
 
-    def test_ukf_sigma_mean_invariant(self):
+    def test_ukf_sigma_mean_invariant(self) -> None:
         x = np.array([3.0, -2.0])
         P = np.array([[2.0, 0.3], [0.3, 1.0]])
 
@@ -78,7 +79,7 @@ class TestAdvancedControl(unittest.TestCase):
         mean = np.dot(ukf.Wm, sigmas)
         np.testing.assert_allclose(mean, x, atol=1e-12)
 
-    def test_ukf_covariance_psd_and_symmetric(self):
+    def test_ukf_covariance_psd_and_symmetric(self) -> None:
         f = lambda x, u, dt: x
         h = lambda x: x
 
@@ -99,7 +100,7 @@ class TestAdvancedControl(unittest.TestCase):
         eigs = np.linalg.eigvals(ukf.P)
         self.assertTrue(np.all(eigs > -1e-10))
 
-    def test_ukf_nonlinear_mean_propagation(self):
+    def test_ukf_nonlinear_mean_propagation(self) -> None:
         f = lambda x, u, dt: x**2
         h = lambda x: x
 
@@ -118,7 +119,7 @@ class TestAdvancedControl(unittest.TestCase):
         ukf.predict(0, 1.0)
         self.assertGreater(ukf.x[0], 4.0)
 
-    def test_ukf_degenerate_covariance(self):
+    def test_ukf_degenerate_covariance(self) -> None:
         f = lambda x, u, dt: x
         h = lambda x: x
 
@@ -139,7 +140,7 @@ class TestAdvancedControl(unittest.TestCase):
         eigs = np.linalg.eigvals(ukf.P)
         self.assertTrue(np.all(np.isfinite(eigs)))
 
-    def test_ukf_measurement_dimension_mismatch(self):
+    def test_ukf_measurement_dimension_mismatch(self) -> None:
         f = lambda x, u, dt: x
         h = lambda x: x[:1]
 
@@ -157,7 +158,7 @@ class TestAdvancedControl(unittest.TestCase):
         with self.assertRaises(ValueError):
             ukf.update(np.array([1.0, 2.0]))
 
-    def test_ukf_matches_monte_carlo_mean(self):
+    def test_ukf_matches_monte_carlo_mean(self) -> None:
         np.random.seed(0)
 
         f = lambda x, u, dt: np.array([x[0] ** 2])
@@ -174,7 +175,7 @@ class TestAdvancedControl(unittest.TestCase):
 
         self.assertAlmostEqual(ukf.x[0], mc_mean, delta=1e-2)
 
-    def test_mpc_linear_admm_selection(self):
+    def test_mpc_linear_admm_selection(self) -> None:
         """Test that providing A, B matrices triggers the ADMM solver."""
         A = np.eye(2)
         B = np.eye(2)
@@ -183,7 +184,7 @@ class TestAdvancedControl(unittest.TestCase):
         self.assertEqual(mpc.mode, "linear")
         self.assertTrue(hasattr(mpc, "H_inv"), "ADMM pre-computation missing")
 
-    def test_mpc_nonlinear_ilqr_selection(self):
+    def test_mpc_nonlinear_ilqr_selection(self) -> None:
         """Test that providing model_func triggers the iLQR solver."""
         f = lambda x, u, dt: x + u
         mpc = ModelPredictiveControl(model_func=f, x0=np.array([0.0]), horizon=5)
@@ -191,7 +192,7 @@ class TestAdvancedControl(unittest.TestCase):
         self.assertEqual(mpc.mode, "nonlinear")
         self.assertIsNone(mpc.A)
 
-    def test_mpc_admm_optimization(self):
+    def test_mpc_admm_optimization(self) -> None:
         """Test ADMM solver accuracy on a simple integrator."""
         dt = 1.0
         A = np.array([[1.0]])
@@ -215,7 +216,7 @@ class TestAdvancedControl(unittest.TestCase):
 
         self.assertGreater(u_opt[0], 2.0)
 
-    def test_mpc_ilqr_optimization(self):
+    def test_mpc_ilqr_optimization(self) -> None:
         """Test iLQR solver accuracy on the same integrator."""
         f = lambda x, u, dt: x + u * dt
 
@@ -237,7 +238,7 @@ class TestAdvancedControl(unittest.TestCase):
 
         self.assertGreater(u_opt[0], 2.0)
 
-    def test_mpc_constraints(self):
+    def test_mpc_constraints(self) -> None:
         """Test that constraints are respected by the solvers."""
         A = np.array([[1.0]])
         B = np.array([[1.0]])
@@ -252,7 +253,7 @@ class TestAdvancedControl(unittest.TestCase):
 
         self.assertLessEqual(u_opt[0], limit + 1e-4)
 
-    def test_mpc_admm_reaches_lqr_solution(self):
+    def test_mpc_admm_reaches_lqr_solution(self) -> None:
         A = np.array([[1.0]])
         B = np.array([[1.0]])
 
@@ -273,7 +274,7 @@ class TestAdvancedControl(unittest.TestCase):
 
         self.assertGreater(u[0], 0.5)
 
-    def test_mpc_admm_respects_constraints(self):
+    def test_mpc_admm_respects_constraints(self) -> None:
         A = np.array([[1.0]])
         B = np.array([[1.0]])
 
@@ -290,7 +291,7 @@ class TestAdvancedControl(unittest.TestCase):
 
         self.assertLessEqual(abs(u[0]), limit + 1e-9)
 
-    def test_mpc_ilqr_converges_nonlinear(self):
+    def test_mpc_ilqr_converges_nonlinear(self) -> None:
         f = lambda x, u, dt: x + u * dt
 
         mpc = ModelPredictiveControl(
@@ -305,7 +306,7 @@ class TestAdvancedControl(unittest.TestCase):
 
         self.assertGreater(u[0], 0.5)
 
-    def test_mpc_ilqr_repeated_calls_stable(self):
+    def test_mpc_ilqr_repeated_calls_stable(self) -> None:
         f = lambda x, u, dt: x + u * dt
 
         mpc = ModelPredictiveControl(
@@ -321,7 +322,7 @@ class TestAdvancedControl(unittest.TestCase):
 
         self.assertTrue(np.isfinite(x[0]))
 
-    def test_mpc_admm_robust_under_noise(self):
+    def test_mpc_admm_robust_under_noise(self) -> None:
         rng = np.random.default_rng(0)
 
         A = np.array([[1.0]])
@@ -348,10 +349,12 @@ class TestAdvancedControl(unittest.TestCase):
         self.assertTrue(abs(x[0]) < 10)
         self.assertTrue(abs(x[0] - x_ref[0]) < 5)
 
-    def test_mpc_ilqr_robust_under_noise(self):
+    def test_mpc_ilqr_robust_under_noise(self) -> None:
         rng = np.random.default_rng(1)
 
-        def f(x, u, dt):
+        def f(
+            x: NDArray[np.float64], u: NDArray[np.float64], dt: float
+        ) -> NDArray[np.float64]:
             return x + np.tanh(u) * dt
 
         mpc = ModelPredictiveControl(
@@ -374,7 +377,7 @@ class TestAdvancedControl(unittest.TestCase):
         self.assertTrue(np.isfinite(x[0]))
         self.assertLess(abs(x[0] - x_ref[0]), 3.0)
 
-    def test_mpc_admm_runtime(self):
+    def test_mpc_admm_runtime(self) -> None:
         A = np.array([[1.0]])
         B = np.array([[1.0]])
 
@@ -396,8 +399,10 @@ class TestAdvancedControl(unittest.TestCase):
 
         self.assertLess(elapsed, 0.5)
 
-    def test_mpc_ilqr_runtime(self):
-        def f(x, u, dt):
+    def test_mpc_ilqr_runtime(self) -> None:
+        def f(
+            x: NDArray[np.float64], u: NDArray[np.float64], dt: float
+        ) -> NDArray[np.float64]:
             return x + u * dt
 
         mpc = ModelPredictiveControl(

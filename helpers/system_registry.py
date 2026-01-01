@@ -25,7 +25,7 @@ class SystemDescriptor:
         supports_interactive_lab: bool,
         is_hardware: bool = False,
     ) -> None:
-        self.system_id: Final[str] = system_id
+        self.system_id: str = system_id
         self.display_name: Final[str] = display_name
         self.system_class: Final[Type[Any]] = system_class
         self.input_type: Final[str] = input_type
@@ -34,7 +34,7 @@ class SystemDescriptor:
         self.supports_estimation: Final[bool] = supports_estimation
         self.supports_mpc: Final[bool] = supports_mpc
         self.supports_interactive_lab: Final[bool] = supports_interactive_lab
-        self.is_hardware: Final[bool] = is_hardware
+        self.is_hardware: bool = is_hardware
 
 
 SYSTEM_REGISTRY: Dict[str, SystemDescriptor] = {

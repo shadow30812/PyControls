@@ -6,11 +6,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 sys.path.append(os.getcwd())
+from typing import Any, Dict, List, Optional, Type, Union
+
+from numpy.typing import NDArray
+
 import helpers.config as config
 from core.analysis import get_stability_margins
 from core.control_utils import PIDController
 from core.ekf import ExtendedKalmanFilter
 from core.estimator import KalmanFilter
+from core.state_space import StateSpace
+from core.transfer_function import TransferFunction
 from helpers.config import BATTERY_KF, BATTERY_PID
 from helpers.exit import flush, kill, stop
 from helpers.plot import (
@@ -28,7 +34,11 @@ from helpers.simulation_runner import (
     run_mpc_simulation,
     run_ukf_simulation,
 )
-from helpers.system_registry import SYSTEM_REGISTRY, load_available_systems
+from helpers.system_registry import (
+    SYSTEM_REGISTRY,
+    SystemDescriptor,
+    load_available_systems,
+)
 from modules.interactive_lab import InteractiveLab, pendulum_lqr_controller
 
 
@@ -43,7 +53,7 @@ class PyControlsApp:
        Parameter estimation, Nonlinear estimation, MPC, and Interactive Labs).
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         Initialize the application, load systems, and set up default parameters.
 
@@ -51,20 +61,22 @@ class PyControlsApp:
         it initializes the default system (DC Motor), loads configuration
         parameters (PID, LQR, Simulation settings), and prepares the environment.
         """
-        self.available_systems = load_available_systems()
+        self.available_systems: Dict[str, Type[Any]] = load_available_systems()
         if not self.available_systems:
             print("Error: No valid system classes found in systems/ folder.")
             sys.exit(1)
 
-        self.current_system_id = "dc_motor"
-        self.current_descriptor = SYSTEM_REGISTRY[self.current_system_id]
+        self.current_system_id: str = "dc_motor"
+        self.current_descriptor: SystemDescriptor = SYSTEM_REGISTRY[
+            self.current_system_id
+        ]
 
-        self.system_name = self.current_descriptor.display_name.replace(" ", "")
-        self.SystemClass = self.current_descriptor.system_class
+        self.system_name: str = self.current_descriptor.display_name.replace(" ", "")
+        self.SystemClass: Optional[Type[Any]] = self.current_descriptor.system_class
 
         if self.SystemClass is not None:
-            temp_instance = self.SystemClass()
-            self.active_params = temp_instance.params.copy()
+            temp_instance: Any = self.SystemClass()
+            self.active_params: Dict[str, float] = temp_instance.params.copy()
         else:
             self.active_params = {}
 
@@ -81,25 +93,25 @@ class PyControlsApp:
         elif self.current_system_id == "battery" and hasattr(config, "BATTERY_PARAMS"):
             self.active_params.update(config.BATTERY_PARAMS)
 
-        self.system = (
+        self.system: Any = (
             self.current_descriptor.system_class()
             if self.current_descriptor.system_class is not None
             else None
         )
 
-        self.controllers = config.CONTROLLERS.copy()
-        self.sim_params = config.SIM_PARAMS.copy()
-        self.dist_params = config.DISTURBANCE_PARAMS.copy()
-        self.running = True
+        self.controllers: List[Dict[str, Any]] = config.CONTROLLERS.copy()
+        self.sim_params: Dict[str, float] = config.SIM_PARAMS.copy()
+        self.dist_params: Dict[str, Any] = config.DISTURBANCE_PARAMS.copy()
+        self.running: bool = True
 
-    def clear_screen(self):
+    def clear_screen(self) -> None:
         """
         Clears the terminal screen using OS-specific commands.
         Uses 'cls' for Windows (nt) and 'clear' for Unix-like systems.
         """
         os.system("cls" if os.name == "nt" else "clear")
 
-    def print_header(self):
+    def print_header(self) -> None:
         """
         Prints the application banner and current system active parameters.
         Truncates the parameter string if it exceeds display width to maintain layout.
@@ -107,15 +119,15 @@ class PyControlsApp:
         print("\n" + "=" * 60)
         print(f"   PyControls Engineering Suite | System: {self.system_name}   ")
         print("=" * 60)
-        param_list = [f"{k}={v}" for k, v in self.active_params.items()]
-        param_str = ", ".join(param_list)
+        param_list: List[str] = [f"{k}={v}" for k, v in self.active_params.items()]
+        param_str: str = ", ".join(param_list)
         if len(param_str) > 55:
             print(f"Params: {param_str[:55]}...")
         else:
             print(f"Params: {param_str}")
         print("-" * 60)
 
-    def main_menu(self):
+    def main_menu(self) -> None:
         """
         Displays the main menu loop and handles user input routing.
 
@@ -141,7 +153,7 @@ class PyControlsApp:
             print("[10] Run Custom Non-Linear Simulation")
             print("[q] Exit")
 
-            choice = input("\nSelect Option: ").strip()
+            choice: str = input("\nSelect Option: ").strip()
 
             if choice == "1":
                 self.run_preset_dashboard()
@@ -168,7 +180,7 @@ class PyControlsApp:
             else:
                 input("Invalid option. Press Enter...")
 
-    def run_preset_dashboard(self):
+    def run_preset_dashboard(self) -> None:
         """
         Executes Option 1: Time-Domain Response Dashboard.
 
@@ -190,20 +202,21 @@ class PyControlsApp:
 
         print(f"\nSimulating Time Response for {self.system_name}...")
         try:
-            current_system = self.SystemClass(**self.active_params)
+            assert self.SystemClass is not None
+            current_system: Any = self.SystemClass(**self.active_params)
         except Exception as e:
             print(f"Error instantiating {self.system_name}: {e}")
             return
 
         if self.current_system_id == "dc_motor":
-            labels = [
+            labels: List[str] = [
                 "Speed (rad/s)",
                 "Current (A)",
                 "Voltage (V)",
                 "Est. Disturbance (Nm)",
             ]
-            indices = [0, 1]
-            loop_controllers = self.controllers
+            indices: List[int] = [0, 1]
+            loop_controllers: List[Dict[str, Any]] = self.controllers
         else:
             labels = [
                 "Angle (rad)",
@@ -214,12 +227,18 @@ class PyControlsApp:
             indices = [2, 0]
             loop_controllers = [{"name": "LQR Stabilizer", "color": "k"}]
 
-        y_real_hist = {}
-        x_est_hist = {}
-        u_hist_map = {}
-        t = 0
+        y_real_hist: Dict[str, NDArray[np.float64]] = {}
+        x_est_hist: Dict[str, NDArray[np.float64]] = {}
+        u_hist_map: Dict[str, NDArray[np.float64]] = {}
+        t = np.zeros(0)
 
         for ctrl in loop_controllers:
+            t: NDArray[np.float64]
+            y_real: NDArray[np.float64]
+            x_est: NDArray[np.float64]
+            u_hist: NDArray[np.float64]
+            ctrl: Dict[str, Any]
+
             t, y_real, x_est, u_hist = run_linear_simulation(
                 current_system,
                 self.current_system_id,
@@ -245,7 +264,7 @@ class PyControlsApp:
             self.dist_params,
         )
 
-    def run_analysis_dashboard(self):
+    def run_analysis_dashboard(self) -> None:
         """
         Executes Option 2: System Analysis.
 
@@ -269,19 +288,20 @@ class PyControlsApp:
 
         print(f"\nGenerating Analysis for {self.system_name}...")
         try:
-            current_system = self.SystemClass(**self.active_params)
-            ss = current_system.get_state_space()
+            assert self.SystemClass is not None
+            current_system: Any = self.SystemClass(**self.active_params)
+            ss: StateSpace = current_system.get_state_space()
         except Exception:
             print("System does not support state-space analysis.")
             return
 
         print("-" * 60)
-        tf_ol = None
-        ctrl_name = "Unknown"
+        tf_ol: Optional[Union["TransferFunction", Any]] = None
+        ctrl_name: str = "Unknown"
 
         if self.current_system_id == "dc_motor":
             print("Stability Analysis (Loop Gain with Default PID)")
-            pid_cfg = self.controllers[2]
+            pid_cfg: Dict[str, Any] = self.controllers[2]
             ctrl_name = pid_cfg["name"]
             try:
                 tf_ol = current_system.get_open_loop_tf(
@@ -295,7 +315,7 @@ class PyControlsApp:
             print("Note: Margins represent robustness at the plant input.")
             ctrl_name = "LQR"
             try:
-                K_lqr = current_system.dlqr_gain()
+                K_lqr: NDArray[np.float64] = current_system.dlqr_gain()
                 tf_ol = current_system.get_open_loop_tf(K_lqr)
             except Exception as e:
                 print(f"Could not construct TF: {e}")
@@ -316,8 +336,8 @@ class PyControlsApp:
 
         print("-" * 60)
 
-        w = np.logspace(*config.PLOT_PARAMS["bode_range"])
-        out_idx = 2 if self.current_system_id == "pendulum" else 0
+        w: NDArray[np.float64] = np.logspace(*config.PLOT_PARAMS["bode_range"])
+        out_idx: int = 2 if self.current_system_id == "pendulum" else 0
         mags, phases = ss.get_frequency_response(w, input_idx=0, output_idx=out_idx)
 
         t, y_real, x_est, _ = run_linear_simulation(
@@ -339,7 +359,7 @@ class PyControlsApp:
             self.current_system_id,
         )
 
-    def edit_params_menu(self):
+    def edit_params_menu(self) -> None:
         """
         Provides an interactive CLI to edit the physical parameters of the current system.
         Updates self.active_params in real-time.
@@ -347,19 +367,19 @@ class PyControlsApp:
         print(f"\nCurrent Parameters for {self.system_name}:")
         for k, v in self.active_params.items():
             print(f"  [{k}] : {v}")
-        key = input("\nEnter parameter key to edit (or 'b' to go back): ").strip()
+        key: str = input("\nEnter parameter key to edit (or 'b' to go back): ").strip()
         if key == "b":
             return
         if key in self.active_params:
             try:
-                val = float(input(f"New value for {key}: "))
+                val: float = float(input(f"New value for {key}: "))
                 self.active_params[key] = val
             except ValueError:
                 print("Invalid number.")
         else:
             print("Unknown parameter.")
 
-    def edit_disturbance_menu(self):
+    def edit_disturbance_menu(self) -> None:
         """
         Provides a menu to configure external disturbance injection.
         Allows toggling the disturbance on/off and setting magnitude/start time.
@@ -368,7 +388,7 @@ class PyControlsApp:
         print(f"[2] Set Magnitude (Current: {self.dist_params['magnitude']})")
         print(f"[3] Set Time      (Current: {self.dist_params['time']})")
         print("[b] Back")
-        choice = input("\nChoice: ").strip()
+        choice: str = input("\nChoice: ").strip()
         if choice == "b":
             return
         if choice == "1":
@@ -384,7 +404,7 @@ class PyControlsApp:
             except Exception as e:
                 print("Error occurred!", e, sep="\n")
 
-    def switch_system_menu(self):
+    def switch_system_menu(self) -> None:
         """
         Displays a menu to switch between available dynamic systems (e.g., DC Motor, Pendulum).
 
@@ -394,21 +414,21 @@ class PyControlsApp:
         self.clear_screen()
         print("\nAvailable Systems:")
 
-        system_ids = list(SYSTEM_REGISTRY.keys())
+        system_ids: List[str] = list(SYSTEM_REGISTRY.keys())
         for i, sys_id in enumerate(system_ids):
-            desc = SYSTEM_REGISTRY[sys_id]
+            desc: SystemDescriptor = SYSTEM_REGISTRY[sys_id]
             print(f"[{i + 1}] {desc.display_name}")
 
         print("[b] Back")
-        sel = input("\nSelect System: ").strip()
+        sel: str = input("\nSelect System: ").strip()
 
         if sel == "b":
             return
 
         try:
-            idx = int(sel) - 1
+            idx: int = int(sel) - 1
             if 0 <= idx < len(system_ids):
-                new_id = system_ids[idx]
+                new_id: str = system_ids[idx]
 
                 if new_id != self.current_system_id:
                     self.current_system_id = new_id
@@ -446,7 +466,7 @@ class PyControlsApp:
         except ValueError:
             print("Invalid option!")
 
-    def run_ekf(self):
+    def run_ekf(self) -> None:
         """
         Runs the Extended Kalman Filter (EKF) demo for Joint State & Parameter Estimation.
 
@@ -476,29 +496,34 @@ class PyControlsApp:
 
         print(f"\n--- Parameter Estimation Demo ({self.system_name}) ---")
 
+        est_cfg = {}
+        param_names = []
+        plot_labels = []
+
         if self.current_system_id == "dc_motor":
-            est_cfg = config.ESTIMATION_PARAMS
-            param_names = ["Inertia (J)", "Friction (b)"]
-            plot_labels = ["Speed (rad/s)", "Current (A)"]
+            est_cfg: Dict[str, Any] = config.MOTOR_ESTIMATION_PARAMS
+            param_names: List[str] = ["Inertia (J)", "Friction (b)"]
+            plot_labels: List[str] = ["Speed (rad/s)", "Current (A)"]
 
         elif self.current_system_id == "pendulum":
             est_cfg = config.PENDULUM_ESTIMATION_PARAMS
             param_names = ["Mass (m)", "Length (l)"]
             plot_labels = ["Position (m)", "Angle (rad)"]
 
+        assert self.SystemClass is not None
         t_vals, history, true_params, param_keys = run_ekf_simulation(
             self.SystemClass,
             self.current_system_id,
             est_cfg,
         )
-        true_vals_list = [true_params[k] for k in param_keys]
+        true_vals_list: List[float] = [true_params[k] for k in param_keys]
 
         print("Simulating...")
         plot_estimation_history(
             t_vals, history, plot_labels, true_vals_list, param_names
         )
 
-    def run_ukf(self):
+    def run_ukf(self) -> None:
         """
         Runs the Unscented Kalman Filter (UKF) demo for Non-linear State Estimation.
 
@@ -525,8 +550,8 @@ class PyControlsApp:
         print(f"\n--- Non-Linear State Estimation (UKF) - {self.system_name} ---")
 
         if self.current_system_id == "pendulum":
-            cfg = config.UKF_PENDULUM_PARAMS
-            labels = ["Angle (rad)", "Velocity (rad/s)"]
+            cfg: Dict[str, Any] = config.UKF_PENDULUM_PARAMS
+            labels: List[str] = ["Angle (rad)", "Velocity (rad/s)"]
         elif self.current_system_id == "dc_motor":
             cfg = config.UKF_MOTOR_PARAMS
             labels = ["Speed (rad/s)", "Current (A)"]
@@ -548,7 +573,7 @@ class PyControlsApp:
             labels,
         )
 
-    def run_mpc(self):
+    def run_mpc(self) -> None:
         """
         Runs the Model Predictive Control (MPC) demo.
 
@@ -574,8 +599,8 @@ class PyControlsApp:
         print(f"\n--- Model Predictive Control (MPC) - {self.system_name} ---")
 
         if self.current_system_id == "dc_motor":
-            plot_labels = ["Speed (rad/s)", "Voltage (V)"]
-            cfg = config.MPC_MOTOR_PARAMS
+            plot_labels: List[str] = ["Speed (rad/s)", "Voltage (V)"]
+            cfg: Dict[str, Any] = config.MPC_MOTOR_PARAMS
         elif self.current_system_id == "pendulum":
             plot_labels = ["Angle (rad)", "Force (N)"]
             cfg = config.MPC_PENDULUM_PARAMS
@@ -599,7 +624,7 @@ class PyControlsApp:
             cfg,
         )
 
-    def run_interactive_lab(self):
+    def run_interactive_lab(self) -> None:
         """
         Runs the Interactive Laboratory mode.
 
@@ -617,7 +642,7 @@ class PyControlsApp:
             input("Press Enter to continue...")
             return
 
-        params = self.active_params.copy()
+        params: Dict[str, float] = self.active_params.copy()
 
         lab = InteractiveLab(
             system_descriptor=self.current_descriptor,
@@ -629,10 +654,13 @@ class PyControlsApp:
         lab.init_visualization()
 
         if self.current_system_id == "dc_motor":
-            omega_ref = params.get(
-                "omega_ref", config.INTERACTIVE_LAB_PARAMS["omega_ref"]
+            omega_ref: float = (
+                params["omega_ref"]
+                if "omega_ref" in params
+                else config.INTERACTIVE_LAB_PARAMS["omega_ref"]
             )
-            target_config = config.CONTROLLERS[2]
+
+            target_config: Dict[str, Any] = config.CONTROLLERS[2]
 
             print(f"\n[INFO] Loaded Controller: {target_config['name']}")
             print(
@@ -647,11 +675,11 @@ class PyControlsApp:
                 output_limits=(None, None),
             )
 
-            last_t = 0.0
+            last_t: float = 0.0
 
-            def controller_wrapper(state, t):
+            def controller_wrapper(state: Any, t: float) -> float:
                 nonlocal last_t
-                dt = t - last_t
+                dt: float = t - last_t
                 if dt <= 0:
                     dt = config.INTERACTIVE_LAB_PARAMS["controller_min_dt"]
                 last_t = t
@@ -661,17 +689,22 @@ class PyControlsApp:
             lab.set_auto_controller(controller_wrapper)
 
         elif self.current_system_id == "pendulum":
-            current_sys_instance = self.SystemClass(**self.active_params)
+            assert self.SystemClass is not None
+            current_sys_instance: Any = self.SystemClass(**self.active_params)
 
             if hasattr(current_sys_instance, "dlqr_gain"):
-                K = current_sys_instance.dlqr_gain()
+                K: NDArray[np.float64] = current_sys_instance.dlqr_gain()
                 lab.set_auto_controller(pendulum_lqr_controller(K))
             else:
                 print("[WARN] System does not support LQR. Auto-control disabled.")
 
-            x0 = np.array(config.INTERACTIVE_LAB_PARAMS["ekf_x0"])
-            Q = np.diag(config.INTERACTIVE_LAB_PARAMS["ekf_Q_diag"])
-            R = np.diag(config.INTERACTIVE_LAB_PARAMS["ekf_R_diag"])
+            x0: NDArray[np.float64] = np.array(config.INTERACTIVE_LAB_PARAMS["ekf_x0"])
+            Q: NDArray[np.float64] = np.diag(
+                config.INTERACTIVE_LAB_PARAMS["ekf_Q_diag"]
+            )
+            R: NDArray[np.float64] = np.diag(
+                config.INTERACTIVE_LAB_PARAMS["ekf_R_diag"]
+            )
 
             if hasattr(current_sys_instance, "dynamics_continuous") and hasattr(
                 current_sys_instance, "measurement"
@@ -695,9 +728,9 @@ class PyControlsApp:
                 output_limits=(0, 255),
             )
 
-            ss = self.system.get_state_space()
-            phi = np.array([[np.exp(ss.A[0, 0] * lab.dt)]])
-            gamma = (phi - 1) * (1 / ss.A[0, 0]) * ss.B
+            ss: StateSpace = self.system.get_state_space()
+            phi: NDArray[np.float64] = np.array([[np.exp(ss.A[0, 0] * lab.dt)]])
+            gamma: NDArray[np.float64] = (phi - 1) * (1 / ss.A[0, 0]) * ss.B
 
             kf = KalmanFilter(
                 phi,
@@ -709,9 +742,11 @@ class PyControlsApp:
             )
             lab.set_estimator(kf)
 
-            def battery_ctrl(state_est, t):
-                u_raw = pid.update(state_est[0], self.active_params["setpoint"], lab.dt)
-                pwm = np.clip(u_raw, 0, 255)
+            def battery_ctrl(state_est: NDArray[np.float64], t: float) -> float:
+                u_raw: float = pid.update(
+                    state_est[0], self.active_params["setpoint"], lab.dt
+                )
+                pwm: float = np.clip(u_raw, 0, 255)
                 return pwm
 
             lab.set_auto_controller(battery_ctrl)
@@ -737,15 +772,25 @@ class PyControlsApp:
                 lab.step()
                 lab.update_visualization()
 
-                actual_u = lab.last_u
+                actual_u: float = lab.last_u
+
+                omega: float
+                current: float
+                theta: float
+                x_pos: float
+                T: float
+                v_est: float
+                v_avg: float
 
                 if lab.descriptor.system_id == "dc_motor":
+                    assert lab.state is not None
                     omega, current = lab.state
                     print(
                         f"\rω={omega:.2f}, i={current:.2f}, u={actual_u:.2f}",
                         end="",
                     )
                 elif lab.descriptor.system_id == "pendulum":
+                    assert lab.state is not None
                     theta = lab.state[2]
                     x_pos = lab.state[0]
                     print(
@@ -753,11 +798,13 @@ class PyControlsApp:
                         end="",
                     )
                 elif lab.descriptor.system_id == "thermistor":
+                    assert lab.state is not None
                     T = lab.state[0]
-                    u = actual_u
+                    u: float = actual_u
                     print(f"\rT={T:.2f}°C, u={u:.0f}/255", end="")
 
                 elif lab.descriptor.system_id == "battery":
+                    assert lab.state_est is not None
                     v_est = lab.state_est[0]
                     u = lab.last_u
                     v_avg = lab.last_avg
@@ -785,7 +832,7 @@ class PyControlsApp:
 
         input("\nPress Enter to return to menu...")
 
-    def run_custom_simulation(self):
+    def run_custom_simulation(self) -> None:
         """
         Runs an adaptive step-size solver (RK45) on user-defined non-linear equations.
 
@@ -794,7 +841,7 @@ class PyControlsApp:
         using the NonlinearSolver with adaptive time stepping.
         """
         print("\n--- Custom Non-Linear Simulation (Adaptive RK45) ---")
-        eqn = input("Enter dx/dt = f(t, x, u): ").strip()
+        eqn: str = input("Enter dx/dt = f(t, x, u): ").strip()
         try:
             t_vals, y_vals = run_custom_nonlinear_simulation(
                 eqn,
@@ -813,7 +860,7 @@ class PyControlsApp:
 
 if __name__ == "__main__":
     app = PyControlsApp()
-    KILLED = False
+    KILLED: bool = False
     try:
         app.main_menu()
     except KeyboardInterrupt:

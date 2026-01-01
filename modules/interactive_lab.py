@@ -8,7 +8,7 @@ import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
-from numpy.typing import ArrayLike, NDArray
+from numpy.typing import NDArray
 
 from core.control_utils import PIDController
 from helpers.config import BATTERY_PID, THERMISTOR_PID
@@ -82,9 +82,6 @@ class InteractiveLab:
             NotImplementedError: If the system ID is not recognized.
         """
         self.time = 0.0
-        self.success_timer: float = 0.0
-        self.running = True
-        self.status = "RUNNING"
         self.failure_reason = None
 
         sid: str = self.descriptor.system_id
@@ -146,6 +143,9 @@ class InteractiveLab:
             )
 
         self.state_est = self.state.copy()
+        self.success_timer: float = 0.0
+        self.running = True
+        self.status = "RUNNING"
 
     def step(self, disturbance: float = 0.0) -> NDArray[np.float64]:
         """
@@ -164,14 +164,14 @@ class InteractiveLab:
         Returns:
             np.ndarray: The updated state vector.
         """
+        if not self.running:
+            raise RuntimeError("InteractiveLab.step() called before initialize().")
+
         if self.state is None:
             return np.zeros(0)
 
         if self.status in ("SUCCESS", "FAILED"):
             return self.state
-
-        if not self.running:
-            raise RuntimeError("InteractiveLab.step() called before initialize().")
 
         if self.control_mode == "MANUAL":
             self.handle_keyboard_input()
