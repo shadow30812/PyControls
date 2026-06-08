@@ -179,7 +179,7 @@ PyControls/
 ├── docs/
 │   ├── Complexity Analysis.md
 │   ├── Equations and Formulae.md
-│   ├── MIT License.txt
+│   ├── LICENSE
 │   └── README.md
 ├── Heater Project Report/
 │   ├── Figure.png
@@ -279,7 +279,7 @@ Numerical correctness is critical—tests verify solver accuracy to tolerance.
 
 ## 📜 License
 
-This project is licensed under the MIT License. See `docs/MIT License.txt` for details.
+This project is licensed under the MIT License. See `docs/LICENSE` for details.
 
 ---
 
