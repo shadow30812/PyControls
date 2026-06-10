@@ -17,11 +17,11 @@ This document serves as the definitive mathematical registry for the PyControls 
    * [Inverted Pendulum on a Cart](#32-inverted-pendulum)
 4. [Control Theory & Implementation](#4-control-theory--implementation)
    * [PID Controller (Robust Implementation)](#41-pid-controller)
-   * [Linear Quadratic Regulator (LQR)](#42-linear-quadratic-regulator)
-   * [Model Predictive Control (MPC)](#43-model-predictive-control)
+   * [Linear Quadratic Regulator (LQR)](#42-linear-quadratic-regulator-lqr)
+   * [Model Predictive Control (MPC)](#43-model-predictive-control-mpc)
 5. [State Estimation](#5-state-estimation)
-   * [Extended Kalman Filter (EKF)](#51-extended-kalman-filter)
-   * [Unscented Kalman Filter (UKF)](#52-unscented-kalman-filter)
+   * [Extended Kalman Filter (EKF)](#51-extended-kalman-filter-ekf)
+   * [Unscented Kalman Filter (UKF)](#52-unscented-kalman-filter-ukf)
 6. [System Analysis](#6-system-analysis)
    * [Frequency Response](#61-frequency-response)
    * [Stability Margins](#62-stability-margins)
@@ -104,7 +104,7 @@ The system allows users to define custom dynamics or math functions as strings. 
 
 The calculation of the matrix exponential $e^{At}$ is the cornerstone of solving Linear Time-Invariant (LTI) differential equations of the form $\dot{x} = Ax$.
 
-**Algorithm: Scaling and Squaring**
+### Algorithm: Scaling and Squaring
 
 This method is chosen for its numerical stability compared to the power series definition, which can suffer from severe round-off errors if the matrix norm is large.
 
