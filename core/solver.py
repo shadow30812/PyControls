@@ -1,9 +1,22 @@
-from typing import Any, Callable, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from helpers.config import SOLVER_PARAMS
+from core.base import BaseSolver
+
+try:
+    from helpers.config import SOLVER_PARAMS
+except ImportError:
+    SOLVER_PARAMS: Dict[str, Any] = {
+        "matrix_exp_order": 20,
+        "adaptive_dt_min": 1e-5,
+        "adaptive_dt_max": 0.5,
+        "adaptive_tol": 1e-6,
+        "adaptive_initial_dt": 0.001,
+        "safety_factor_1": 0.9,
+        "safety_factor_2": 0.2,
+    }
 
 try:
     from numba import njit
@@ -85,7 +98,37 @@ def manual_matrix_exp(
     return E
 
 
-class ExactSolver:
+def discretize_zoh(
+    A: ArrayLike, B: ArrayLike, dt: float
+) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """
+    Discretises continuous-time (A, B) matrices using Zero-Order Hold.
+
+    Computes the matrix exponential of [A B; 0 0] * dt and extracts
+    the discrete-time (Phi, Gamma) pair.
+
+    Args:
+        A: Continuous-time state matrix (n x n).
+        B: Continuous-time input matrix (n x m).
+        dt: Sample period in seconds.
+
+    Returns:
+        Tuple of (Phi, Gamma) — the discrete-time state and input matrices.
+    """
+    A_arr = np.atleast_2d(A)
+    B_arr = np.atleast_2d(B)
+    n_states = A_arr.shape[0]
+    n_inputs = B_arr.shape[1]
+
+    M = np.zeros((n_states + n_inputs, n_states + n_inputs))
+    M[:n_states, :n_states] = A_arr
+    M[:n_states, n_states:] = B_arr
+
+    M_exp = manual_matrix_exp(M * dt)
+    return M_exp[:n_states, :n_states], M_exp[:n_states, n_states:]
+
+
+class ExactSolver(BaseSolver):
     """
     Exact Discrete-Time Solver for Linear Time-Invariant (LTI) Systems.
     Uses the Zero-Order Hold (ZOH) method to discretize continuous matrices.
@@ -106,16 +149,7 @@ class ExactSolver:
 
         self.x: NDArray[np.float64] = np.zeros((self.A.shape[0], 1))
 
-        n_states: int = self.A.shape[0]
-        n_inputs: int = self.B.shape[1]
-
-        top: NDArray[np.float64] = np.hstack((self.A, self.B))
-        bottom: NDArray[np.float64] = np.zeros((n_inputs, n_states + n_inputs))
-        M: NDArray[np.float64] = np.vstack((top, bottom))
-
-        M_exp: NDArray[np.float64] = manual_matrix_exp(M * dt)
-        self.Phi: NDArray[np.float64] = M_exp[:n_states, :n_states]
-        self.Gamma: NDArray[np.float64] = M_exp[:n_states, n_states:]
+        self.Phi, self.Gamma = discretize_zoh(self.A, self.B, dt)
 
     def step(
         self, u_input: Union[float, ArrayLike]
@@ -139,6 +173,15 @@ class ExactSolver:
 
     def reset(self) -> None:
         self.x[:] = 0.0
+
+    def save_state(self) -> Dict[str, Any]:
+        return {
+            "class": "ExactSolver",
+            "x": self.x.flatten().tolist(),
+        }
+
+    def load_state(self, state_dict: Dict[str, Any]) -> None:
+        self.x = np.array(state_dict["x"], dtype=float).reshape(-1, 1)
 
 
 @njit(cache=True)

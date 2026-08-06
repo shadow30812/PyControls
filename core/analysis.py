@@ -1,3 +1,4 @@
+import logging
 from math import inf
 from typing import Any, Callable, Tuple
 
@@ -6,6 +7,8 @@ from numpy.typing import NDArray
 
 from core.math_utils import Root
 from core.transfer_function import TransferFunction
+
+logger = logging.getLogger(__name__)
 
 try:
     from numba import njit
@@ -63,11 +66,7 @@ def get_stability_margins(
             )
         except Exception as e:
             w_pc = 0.0
-            print(
-                "Warning! w_pc set to zero in core/analysis/get_stability_margins",
-                e,
-                sep="\n",
-            )
+            logger.debug("Phase crossover search failed: %s", e)
 
     gain_margin: float = inf
     if w_pc > 0:
@@ -86,11 +85,7 @@ def get_stability_margins(
             )
         except Exception as e:
             w_gc = 0.0
-            print(
-                "Warning! w_gc set to zero in core/analysis/get_stability_margins",
-                e,
-                sep="\n",
-            )
+            logger.debug("Gain crossover search failed: %s", e)
 
     phase_margin: float = inf
     if w_gc > 0:

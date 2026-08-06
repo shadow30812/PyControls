@@ -1,7 +1,9 @@
-from typing import List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
+
+from core.base import BaseController
 
 
 def solve_discrete_riccati(
@@ -185,7 +187,7 @@ class Check:
         return rank == n
 
 
-class PIDController:
+class PIDController(BaseController):
     """
     A robust PID controller implementation with support for Derivative-on-Measurement
     and Low-Pass Filtering for the derivative term, and anti-Windup for the integral.
@@ -301,3 +303,34 @@ class PIDController:
             u = min(self.max_out, u)
 
         return u
+
+    def compute(
+        self,
+        state: NDArray[np.float64],
+        reference: NDArray[np.float64],
+        dt: float,
+    ) -> NDArray[np.float64]:
+        """
+        Unified controller interface. Extracts scalar measurement/setpoint
+        from state/reference vectors and returns control as 1-D array.
+        """
+        measurement = float(state.flat[0])
+        setpoint = float(reference.flat[0])
+        u = self.update(measurement, setpoint, dt)
+        return np.array([u])
+
+    def save_state(self) -> Dict[str, Any]:
+        return {
+            "class": "PIDController",
+            "integral_error": self.integral_error,
+            "prev_value": self.prev_value,
+            "prev_derivative": self.prev_derivative,
+            "Kp": self.Kp,
+            "Ki": self.Ki,
+            "Kd": self.Kd,
+        }
+
+    def load_state(self, state_dict: Dict[str, Any]) -> None:
+        self.integral_error = state_dict.get("integral_error", 0.0)
+        self.prev_value = state_dict.get("prev_value", 0.0)
+        self.prev_derivative = state_dict.get("prev_derivative", 0.0)

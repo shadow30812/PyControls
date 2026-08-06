@@ -1,10 +1,15 @@
-from typing import Any, Callable, Optional, Union
+import logging
+from typing import Any, Callable, Dict, Optional, Union
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
+from core.base import BaseEstimator
 
-class ExtendedKalmanFilter:
+logger = logging.getLogger(__name__)
+
+
+class ExtendedKalmanFilter(BaseEstimator):
     """
     Extended Kalman Filter (EKF) for Non-Linear Parameter Estimation.
 
@@ -132,9 +137,7 @@ class ExtendedKalmanFilter:
         try:
             K: NDArray[np.float64] = self.P @ H.T @ np.linalg.inv(S)
         except np.linalg.LinAlgError:
-            print(
-                "Np LinAlg error in core/ekf/ExtendedKalmanFilter/update",
-            )
+            logger.warning("LinAlg error in EKF update; using zero gain fallback.")
             K: NDArray[np.float64] = np.zeros((self.n, y_meas.shape[0]))
 
         self.x_hat = self.x_pred + K @ y_err
@@ -143,3 +146,18 @@ class ExtendedKalmanFilter:
         self.P = (I - K @ H) @ self.P
 
         return self.x_hat.flatten()
+
+    def get_state(self) -> NDArray[np.float64]:
+        return self.x_hat.flatten()
+
+    def get_covariance(self) -> NDArray[np.float64]:
+        return self.P.copy()
+
+    def reset(self, x0: ArrayLike, P0: Optional[ArrayLike] = None) -> None:
+        self.x_hat = np.array(x0, dtype=float).reshape(-1, 1)
+        self.n = self.x_hat.shape[0]
+        if P0 is not None:
+            self.P = np.array(P0, dtype=float)
+        else:
+            self.P = np.eye(self.n) * 0.1
+        self._I_complex = np.eye(self.n, dtype=complex)

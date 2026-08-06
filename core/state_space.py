@@ -1,9 +1,12 @@
+import logging
 from typing import Tuple
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from core.exceptions import DimensionMismatchError
+
+logger = logging.getLogger(__name__)
 
 
 class StateSpace:
@@ -126,9 +129,7 @@ class StateSpace:
                 mags[k] = 20.0 * np.log10(np.abs(resp))
                 phases[k] = np.degrees(np.angle(resp))
             except np.linalg.LinAlgError:
-                print(
-                    "Np LinAlg error in core/state_space/StateSpace/get_frequency_response"
-                )
+                logger.warning("LinAlg error in frequency response at ω=%s", w)
                 mags[k] = np.inf
                 phases[k] = 0.0
 

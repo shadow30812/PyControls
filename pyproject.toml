@@ -28,4 +28,4 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["core*", "systems*"]
+include = ["core*", "systems*", "interfaces*"]

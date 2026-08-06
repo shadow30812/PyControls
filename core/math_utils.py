@@ -1,4 +1,5 @@
 import cmath
+import logging
 import math
 import re
 from types import CodeType
@@ -8,6 +9,8 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from core.exceptions import ConvergenceError
+
+logger = logging.getLogger(__name__)
 
 TOL: Final[float] = 1e-12
 hc: Final[float] = 1e-12
@@ -50,11 +53,7 @@ def make_func(
         try:
             return eval(code, {"__builtins__": {}}, safe_locals)
         except Exception as e:
-            print(
-                "Error in core/math_utils/make_func/f",
-                e,
-                sep="\n",
-            )
+            logger.warning("Error evaluating expression: %s", e)
             return 0.0
 
     return f
@@ -87,11 +86,7 @@ def make_system_func(
             res: Any = eval(code, {"__builtins__": {}}, loc)
             return np.asarray(res, dtype=float)
         except Exception as e:
-            print(
-                "Error in core/math_utils/make_system_func/f",
-                e,
-                sep="\n",
-            )
+            logger.warning("Error evaluating system expression: %s", e)
             return np.zeros_like(x)
 
     return f
@@ -113,11 +108,7 @@ class Differentiation:
             try:
                 return (func(point + hf) - func(point - hf)).real / (2 * hf)
             except Exception as e:
-                print(
-                    "Could not differentiate: core/math_utils/Differentiation/real_diff",
-                    e,
-                    sep="\n",
-                )
+                logger.warning("Differentiation fallback failed: %s", e)
                 return 0.0
 
 
@@ -301,10 +292,10 @@ class Root:
             try:
                 return self.brent_root(func, x0, x1, tol=tol, f_tol=tol)
             except (ValueError, ConvergenceError):
-                print("Error in Brent's root")
+                logger.debug("Brent's method failed; falling back to Newton.")
 
         try:
             return self.newton_root(func, x0, tol=tol)
         except ConvergenceError:
-            print("Error in Newton's root")
+            logger.warning("Newton's method also failed; returning initial guess.")
             return x0

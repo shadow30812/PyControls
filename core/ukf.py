@@ -1,10 +1,12 @@
-from typing import Any, Callable, Final, Union
+from typing import Any, Callable, Dict, Final, Optional, Union
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
+from core.base import BaseEstimator
 
-class UnscentedKalmanFilter:
+
+class UnscentedKalmanFilter(BaseEstimator):
     """
     Unscented Kalman Filter (UKF) for Non-Linear Estimation.
 
@@ -151,3 +153,22 @@ class UnscentedKalmanFilter:
         self.P = self.P - np.dot(K, np.dot(S, K.T))
 
         return self.x
+
+    def get_state(self) -> NDArray[np.float64]:
+        return self.x.copy()
+
+    def get_covariance(self) -> NDArray[np.float64]:
+        return self.P.copy()
+
+    def reset(self, x0: ArrayLike, P0: Optional[ArrayLike] = None) -> None:
+        self.x = np.array(x0, dtype=float)
+        n_new = len(self.x)
+        if n_new != self.n:
+            # Bypass Final annotation at runtime for dimension change
+            object.__setattr__(self, "n", n_new)
+            self.lam = self.alpha**2 * (self.n + self.kappa) - self.n
+            self._compute_weights()
+        if P0 is not None:
+            self.P = np.array(P0, dtype=float)
+        else:
+            self.P = np.eye(self.n) * 0.1

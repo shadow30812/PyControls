@@ -1,10 +1,12 @@
-from typing import Any, Final, Optional, Union
+from typing import Any, Dict, Final, Optional, Union
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
+from core.base import BaseEstimator
 
-class KalmanFilter:
+
+class KalmanFilter(BaseEstimator):
     """
     Standard Linear Discrete-Time Kalman Filter.
     Estimates the state x of a linear system from noisy measurements y.
@@ -90,3 +92,19 @@ class KalmanFilter:
         self.P = (I - K @ self.C) @ self.P
 
         return self.x_hat.flatten()
+
+    def get_state(self) -> NDArray[np.float64]:
+        """Returns the current state estimate as a flat array."""
+        return self.x_hat.flatten()
+
+    def get_covariance(self) -> NDArray[np.float64]:
+        """Returns a copy of the current error covariance matrix."""
+        return self.P.copy()
+
+    def reset(self, x0: ArrayLike, P0: Optional[ArrayLike] = None) -> None:
+        """Resets filter state. Useful for Simulink scenario restarts."""
+        self.x_hat = np.array(x0, dtype=float).reshape(-1, 1)
+        if P0 is not None:
+            self.P = np.array(P0, dtype=float)
+        else:
+            self.P = np.eye(self.x_hat.shape[0]) * 0.1

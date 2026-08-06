@@ -1,14 +1,31 @@
-from typing import Any, Callable, Final, List, Optional, Tuple, TypeAlias, Union, cast
+from typing import Any, Callable, Dict, Final, List, Optional, Tuple, TypeAlias, Union, cast
+import logging
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from helpers.config import MPC_SOLVER_PARAMS
+from core.base import BaseController
+
+try:
+    from helpers.config import MPC_SOLVER_PARAMS
+except ImportError:
+    MPC_SOLVER_PARAMS: Dict[str, Any] = {
+        "rho": 1.0,
+        "finite_diff_eps": 1e-5,
+        "ilqr_reg": 1.0,
+        "ilqr_alphas": [1.0, 0.5, 0.25, 0.1],
+        "default_linear_iters": 50,
+        "default_nonlinear_iters": 10,
+        "ilqr_tol": 1e-3,
+        "mpc_stride": 3,
+    }
+
+logger = logging.getLogger(__name__)
 
 NumericArray: TypeAlias = Union[NDArray[np.float64], NDArray[np.complex128]]
 
 
-class ModelPredictiveControl:
+class ModelPredictiveControl(BaseController):
     """
     Multi-Purpose Model Predictive Controller (MPC).
 
@@ -50,8 +67,8 @@ class ModelPredictiveControl:
         """
         self.dt: Final[float] = dt
         self.N: Final[int] = horizon
-        self.u_min: Final[Union[float, NDArray[np.float64]]] = u_min
-        self.u_max: Final[Union[float, NDArray[np.float64]]] = u_max
+        self.u_min: Union[float, NDArray[np.float64]] = u_min
+        self.u_max: Union[float, NDArray[np.float64]] = u_max
 
         if x0 is not None:
             self.x_dim: int = len(x0)
@@ -65,23 +82,21 @@ class ModelPredictiveControl:
         else:
             self.u_dim = 1
 
-        self.Q: Final[NDArray[np.float64]] = (
+        self.Q: NDArray[np.float64] = (
             np.eye(self.x_dim) if Q is None else np.array(Q, dtype=float)
         )
-        self.R: Final[NDArray[np.float64]] = (
+        self.R: NDArray[np.float64] = (
             np.eye(self.u_dim) if R is None else np.array(R, dtype=float)
         )
 
         if A is not None and B is not None:
-            print("\nMPC: Linear matrices detected. Using ADMM solver.\n")
+            logger.debug("MPC: Linear matrices detected. Using ADMM solver.")
             self.mode: str = "linear"
             self.A: Optional[NDArray[np.float64]] = np.array(A, dtype=float)
             self.B: Optional[NDArray[np.float64]] = np.array(B, dtype=float)
             self._setup_admm()
         else:
-            print(
-                "\nMPC: No linear matrices. Using iLQR solver for nonlinear dynamics.\n"
-            )
+            logger.debug("MPC: No linear matrices. Using iLQR solver for nonlinear dynamics.")
             self.mode = "nonlinear"
             self.f: Optional[
                 Callable[
@@ -365,3 +380,66 @@ class ModelPredictiveControl:
         self.u_seq[-1] = 0.0
 
         return u_optimal
+
+    def compute(
+        self,
+        state: NDArray[np.float64],
+        reference: NDArray[np.float64],
+        dt: float,
+    ) -> NDArray[np.float64]:
+        """
+        Unified controller interface. Wraps optimize().
+        Arg dt is unused (MPC uses self.dt), but accepted for interface compliance.
+        """
+        return self.optimize(state, reference)
+
+    def reset(self) -> None:
+        """Clears warm-start trajectories and gains. Call between scenarios."""
+        self.u_seq[:] = 0.0
+        self._x_seq[:] = 0.0
+        self._k[:] = 0.0
+        self._K[:] = 0.0
+        self._A_seq[:] = 0.0
+        self._B_seq[:] = 0.0
+        if hasattr(self, "_prev_k_norm"):
+            del self._prev_k_norm
+
+    def set_constraints(
+        self,
+        u_min: Union[float, NDArray[np.float64]],
+        u_max: Union[float, NDArray[np.float64]],
+    ) -> None:
+        """Updates control input bounds. Safe to call between optimization steps."""
+        self.u_min = u_min
+        self.u_max = u_max
+
+    def set_weights(
+        self,
+        Q: Optional[ArrayLike] = None,
+        R: Optional[ArrayLike] = None,
+    ) -> None:
+        """
+        Updates cost matrices.
+
+        For linear-mode MPC, this triggers _setup_admm() to recompute condensed
+        QP matrices. This is a one-time cost (~1 ms for typical systems).
+        Do NOT call inside a tight control loop.
+        """
+        if Q is not None:
+            self.Q = np.array(Q, dtype=float)
+        if R is not None:
+            self.R = np.array(R, dtype=float)
+        if self.mode == "linear":
+            self._setup_admm()
+
+    def save_state(self) -> Dict[str, Any]:
+        return {
+            "class": "ModelPredictiveControl",
+            "u_seq": self.u_seq.tolist(),
+            "x_seq": self._x_seq.tolist(),
+            "mode": self.mode,
+        }
+
+    def load_state(self, state_dict: Dict[str, Any]) -> None:
+        self.u_seq = np.array(state_dict["u_seq"], dtype=float)
+        self._x_seq = np.array(state_dict["x_seq"], dtype=float)
