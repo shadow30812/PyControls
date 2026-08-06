@@ -283,5 +283,5 @@ This project is licensed under the MIT License. See `docs/LICENSE` for details.
 
 ---
 
-Version: 5.3.4  
-Last Updated: 1 January 2026
+Version: 5.4.0  
+Last Updated: 6 August 2026
