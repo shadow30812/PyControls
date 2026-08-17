@@ -1,0 +1,15 @@
+Metadata-Version: 2.4
+Name: pycontrols
+Version: 5.4.0
+Summary: A First-Principles Control Systems Simulation Library
+Author-email: Shadow <updow512@gmail.com>
+Project-URL: Homepage, https://github.com/shadow30812/pycontrols
+Classifier: Programming Language :: Python :: 3
+Classifier: Topic :: Scientific/Engineering :: Physics
+Classifier: Intended Audience :: Science/Research/Software
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: numpy
+Requires-Dist: matplotlib
+Requires-Dist: numba>=0.59.0
+Requires-Dist: pyserial
