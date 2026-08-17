@@ -50,6 +50,11 @@ BENCHMARKS = [
         "4.1–4.3  Estimation Metrics",
         "benchmark_estimation",
     ),
+    (
+        "benchmarking.benchmark_scipy_speed",
+        "5.1  SciPy Speed Comparison",
+        "benchmark_scipy_speed",
+    ),
 ]
 
 

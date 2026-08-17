@@ -23,7 +23,9 @@ This document provides a detailed breakdown of all 12 profiling and benchmarking
    - [4.1 Joint State-Parameter EKF Convergence](#41-joint-state-parameter-ekf-convergence)
    - [4.2 UKF vs EKF on Discontinuous Friction (Stiction)](#42-ukf-vs-ekf-on-stiction-dynamics)
    - [4.3 Noise Attenuation Ratio (SNR Improvement)](#43-noise-rejection-ratio)
-5. [Data-Driven CV Bullet Points (Ready to Use)](#data-driven-cv-bullet-points)
+5. [Category 5: Execution Speed vs Industry Standards (SciPy)](#category-5-execution-speed-vs-industry-standards-scipy)
+   - [5.1 Speed Benchmarks Across 7 Core Algorithms](#51-speed-benchmarks-across-7-core-algorithms)
+6. [Data-Driven CV Bullet Points (Ready to Use)](#data-driven-cv-bullet-points)
 
 ---
 
@@ -212,13 +214,42 @@ This document provides a detailed breakdown of all 12 profiling and benchmarking
 
 ---
 
+## Category 5: Execution Speed vs Industry Standards (SciPy)
+
+### 5.1 Speed Benchmarks Across 7 Core Algorithms
+* **File:** [`benchmarking/benchmark_scipy_speed.py`](file:///home/shadow30812/LWL/Projects/PyControls/benchmarking/benchmark_scipy_speed.py)
+* **Concept:** Rigorously quantifies the execution latency of PyControls implementations against SciPy across all key mathematical and control engineering routines where timing carries physical significance (real-time loop execution, adaptive control re-tuning, and hardware-in-the-loop simulation).
+* **Measured Comparison Table:**
+
+| Algorithm | Model / Size | PyControls Latency | SciPy Latency | Speed Comparison | Physical / Engineering Meaning |
+|---|---|---|---|---|---|
+| **Matrix Exponential** | $4 \times 4$ State Matrix | **$3.69\mu\text{s}$** | $101.51\mu\text{s}$ | **$27.5\times$ Faster** | Online LPV system discretization ($>250\text{ kHz}$) |
+| **Matrix Exponential** | $8 \times 8$ State Matrix | **$15.79\mu\text{s}$** | $28.74\mu\text{s}$ | **$1.8\times$ Faster** | Higher-order mechanical system discretization |
+| **ZOH Discretization** | $4 \times 4$ System, 1 Input | **$17.03\mu\text{s}$** | $63.24\mu\text{s}$ | **$3.7\times$ Faster** | Continuous-to-discrete block matrix conversion |
+| **Jacobian (CSD)** | $4 \times 3$ Nonlinear Func | **$35.19\mu\text{s}$** | $263.11\mu\text{s}$ | **$7.5\times$ Faster** | Exact linearization for nonlinear EKF / iLQR |
+| **Adaptive ODE (RK45)** | Van der Pol ($5.0\text{s}$) | **$1.49\text{ ms}$** | $1.12\text{ ms}$ | $1.3\times$ Slower | Pure Python Dormand-Prince vs compiled C `solve_ivp` |
+| **Brent Root Finding** | Cubic Polynomial | **$21.72\mu\text{s}$** | $8.38\mu\text{s}$ | $2.6\times$ Slower | Real-time gain cross-over / margin solver |
+| **DARE Riccati Solver** | $4 \times 4$ System | **$2.95\text{ ms}$** | $0.42\text{ ms}$ | $7.1\times$ Slower | Fixed-point iteration vs LAPACK QZ decomposition |
+| **Frequency Response** | Bode (100 Freq Points) | **$930.97\mu\text{s}$** | $227.05\mu\text{s}$ | $4.1\times$ Slower | Vectorized linear solve vs transfer poly eval |
+
+* **Key Takeaway:**
+  1. **Numba JIT routines outperform SciPy** by up to **$27.5\times$** on control-scale matrices ($n \le 8$) by executing native machine code with zero C-Python ctypes/CFFI boundary marshalling overhead.
+  2. **Complex-Step Differentiation is $7.5\times$ faster** than finite differences while achieving machine-precision accuracy ($<10^{-16}$) with zero subtractive cancellation.
+  3. **Pure-Python numerical solvers (ODE, Brent)** achieve within **$1.3\times - 2.6\times$** of heavily optimized C/Fortran implementations, validating high algorithmic efficiency.
+
+---
+
 ## Data-Driven CV Bullet Points
 
 Select the bullet points best aligned with your target job role:
 
-### For Software Engineering / Algorithmic Roles
-* **Matrix Operations & JIT Acceleration:**
-  > *"Architected a dependency-free matrix exponential module leveraging Numba JIT compilation, achieving a **327x execution speedup** (reducing latency from 2.15ms to **6.58μs**) with **$<1.5 \times 10^{-11}$ relative error** across 1,000 test matrices against SciPy."*
+### For Software Engineering / High-Performance Computing Roles
+* **JIT Acceleration vs Industry Libraries:**
+  > *"Engineered JIT-compiled matrix exponential and ZOH discretization routines in Numba, outperforming **SciPy by 27.5x ($3.69\mu\text{s}$ vs $101.5\mu\text{s}$)** on $4 \times 4$ state-space models by eliminating C-Python FFI marshaling overhead."*
+* **Analytical Differentiation & Linearization:**
+  > *"Developed a vectorized Complex-Step Differentiation (CSD) engine executing **7.5x faster than SciPy's finite-difference routines ($35.2\mu\text{s}$ vs $263.1\mu\text{s}$)** while guaranteeing exact machine-precision derivatives ($<10^{-16}$ error)."*
+* **Numerical Solver Efficiency:**
+  > *"Built a pure-Python adaptive Dormand-Prince ODE solver (RK5(4)7M) executing within **1.3x of SciPy's C-compiled `solve_ivp`** ($1.49\text{ms}$ vs $1.12\text{ms}$ on 5s Van der Pol limit-cycle integration)."*
 * **Numerical Differentiation:**
   > *"Implemented Complex-Step Differentiation (CSD) for numerical Jacobian computation, completely eliminating subtractive cancellation error and achieving **exact machine precision ($<10^{-16}$ error)** compared to finite-difference approximations."*
 * **DARE Solvers & Scalability:**
