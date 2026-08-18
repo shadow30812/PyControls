@@ -1,3 +1,4 @@
+from _collections_abc import Callable
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -5,58 +6,130 @@ from numpy.typing import ArrayLike, NDArray
 
 from core.base import BaseController
 
+try:
+    from numba import njit
+
+    NUMBA_AVAILABLE: bool = True
+except ImportError:
+    NUMBA_AVAILABLE: bool = False
+
+    def njit(*args: Any, **kwargs: Any) -> Callable[..., Any]:
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+            return func
+
+        return decorator
+
+
+@njit(cache=True, fastmath=True)
+def _sda_core(
+    A: NDArray[np.float64],
+    G: NDArray[np.float64],
+    H: NDArray[np.float64],
+    tol: float = 1e-10,
+    max_iter: int = 50,
+) -> NDArray[np.float64]:
+    """
+    Core numerical kernel for the Structure-Preserving Doubling Algorithm (SDA).
+
+    Solves the Discrete Algebraic Riccati Equation (DARE) via quadratic
+    doubling iterations on the symplectic matrix pencil.
+
+    Args:
+        A (NDArray[np.float64]): State transition matrix (n x n).
+        G (NDArray[np.float64]): Input coupling matrix G = B * R^-1 * B^T (n x n).
+        H (NDArray[np.float64]): Initial cost matrix H_0 = Q (n x n).
+        tol (float, optional): Infinity-norm convergence threshold. Defaults to 1e-10.
+        max_iter (int, optional): Maximum doubling iterations. Defaults to 50.
+
+    Returns:
+        NDArray[np.float64]: Positive semi-definite solution matrix P (n x n).
+    """
+    n: int = A.shape[0]
+    I_n: NDArray[np.float64] = np.eye(n, dtype=np.float64)
+
+    A_k: NDArray[np.float64] = A.copy()
+    G_k: NDArray[np.float64] = G.copy()
+    H_k: NDArray[np.float64] = H.copy()
+
+    for _ in range(max_iter):
+        W: NDArray[np.float64] = I_n + G_k @ H_k
+
+        # Solve linear systems W * X = A_k and W * Y = G_k
+        inv_W_A: NDArray[np.float64] = np.linalg.solve(W, A_k)
+        inv_W_G: NDArray[np.float64] = np.linalg.solve(W, G_k)
+
+        A_next: NDArray[np.float64] = A_k @ inv_W_A
+        G_next: NDArray[np.float64] = G_k + A_k @ inv_W_G @ A_k.T
+        H_next: NDArray[np.float64] = H_k + A_k.T @ H_k @ inv_W_A
+
+        # Enforce numerical symmetry
+        H_next = 0.5 * (H_next + H_next.T)
+        G_next = 0.5 * (G_next + G_next.T)
+
+        # Infinity-norm convergence check: max|H_next - H_k|
+        max_diff: float = 0.0
+        for r in range(n):
+            for c in range(n):
+                d: float = abs(H_next[r, c] - H_k[r, c])
+                max_diff = max(max_diff, d)
+
+        if max_diff < tol:
+            return H_next
+
+        A_k = A_next
+        G_k = G_next
+        H_k = H_next
+
+    return H_k
+
 
 def solve_discrete_riccati(
     A: Union[ArrayLike, NDArray[np.float64]],
     B: Union[ArrayLike, NDArray[np.float64]],
     Q: Union[ArrayLike, NDArray[np.float64]],
     R: Union[ArrayLike, NDArray[np.float64]],
-    tol: float = 1e-8,
-    max_iter: int = 1000,
+    tol: float = 1e-10,
+    max_iter: int = 50,
 ) -> NDArray[np.float64]:
     """
-    Solves the discrete-time Algebraic Riccati Equation (DARE) via iterative convergence.
+    Solves the Discrete-time Algebraic Riccati Equation (DARE) using the
+    Structure-Preserving Doubling Algorithm (SDA).
 
-    The equation solved is:
+    The algebraic equation solved is:
         P = A^T P A - (A^T P B) (R + B^T P B)^-1 (B^T P A) + Q
 
-    This method iterates until the maximum difference between P_next and P
-    is less than the specified tolerance.
+    Unlike classical fixed-point Picard iteration which exhibits linear convergence,
+    SDA achieves quadratic convergence by doubling the effective horizon at every step
+    (2^k steps at iteration k), resolving the solution to machine precision in 6–15 iterations.
 
     Args:
-        A (np.ndarray): The state transition matrix.
-        B (np.ndarray): The input matrix.
-        Q (np.ndarray): The state cost matrix (must be positive semi-definite).
-        R (np.ndarray): The input cost matrix (must be positive definite).
-        tol (float, optional): The convergence tolerance. Defaults to 1e-8.
-        max_iter (int, optional): The maximum number of iterations. Defaults to 1000.
+        A (array-like): Continuous/discrete state transition matrix (n x n).
+        B (array-like): Input matrix (n x m).
+        Q (array-like): State cost weighting matrix (positive semi-definite, n x n).
+        R (array-like): Input cost weighting matrix (positive definite, m x m or scalar).
+        tol (float, optional): Maximum absolute difference tolerance for convergence.
+            Defaults to 1e-10.
+        max_iter (int, optional): Maximum doubling iterations (50 iterations corresponds
+            to an effective horizon of 2^50 steps). Defaults to 50.
 
     Returns:
-        np.ndarray: The solution matrix P.
+        NDArray[np.float64]: The unique stabilizing positive semi-definite solution matrix P (n x n).
+
+    Raises:
+        ValueError: If input dimensions are incompatible.
     """
-    A = np.asarray(A, dtype=float)
-    B = np.asarray(B, dtype=float)
-    Q = np.asarray(Q, dtype=float)
-    R = np.asarray(R, dtype=float)
+    A_mat: NDArray[np.float64] = np.asarray(A, dtype=np.float64)
+    B_mat: NDArray[np.float64] = np.asarray(B, dtype=np.float64)
+    Q_mat: NDArray[np.float64] = np.asarray(Q, dtype=np.float64)
+    R_mat: NDArray[np.float64] = np.asarray(R, dtype=np.float64)
 
-    P: NDArray[np.float64] = Q.copy()
+    # Compute G_0 = B * R^-1 * B^T
+    if R_mat.ndim == 0 or R_mat.shape == (1, 1) or R_mat.size == 1:
+        G_mat: NDArray[np.float64] = (B_mat @ B_mat.T) / float(R_mat.squeeze())
+    else:
+        G_mat = B_mat @ np.linalg.solve(R_mat, B_mat.T)
 
-    for _ in range(max_iter):
-        BT_P: NDArray[np.float64] = B.T @ P
-        S: NDArray[np.float64] = R + BT_P @ B
-
-        K: NDArray[np.floating] = np.linalg.solve(S, BT_P @ A)
-        P_next: NDArray[np.float64] = A.T @ P @ A - A.T @ P @ B @ K + Q
-
-        P_next = 0.5 * (P_next + P_next.T)
-
-        if np.max(np.abs(P_next - P)) < tol:
-            P = P_next
-            break
-
-        P = P_next
-
-    return P
+    return _sda_core(A_mat, G_mat, Q_mat, tol=tol, max_iter=max_iter)
 
 
 def dlqr(

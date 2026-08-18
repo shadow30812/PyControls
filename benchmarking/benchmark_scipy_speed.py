@@ -168,7 +168,7 @@ def _bench_dare():
     t_sp = (time.perf_counter_ns() - t0) / n_runs / 1e3
 
     return [
-        ("DARE Solver (4x4)", f"{t_py:.2f} μs", f"{t_sp:.2f} μs", t_py / t_sp, "Fixed-point vs QZ Schur"),
+        ("DARE Solver (4x4)", f"{t_py:.2f} μs", f"{t_sp:.2f} μs", t_py / t_sp, "SDA Doubling vs QZ Schur"),
     ]
 
 
@@ -293,9 +293,9 @@ def benchmark_scipy_speed():
 
     print()
     print("  Summary:")
-    print("  • Numba-JIT routines (Matrix Exp, ZOH) and CSD Jacobian run FASTER than SciPy")
-    print("    due to zero-overhead execution and elimination of C-Python boundary marshaling.")
-    print("  • Pure-Python numerical methods (DARE, ODE, Brent) achieve within 1.5x–4x of C/Fortran.")
+    print("  • Numba-JIT routines (Matrix Exp, ZOH, DARE) and CSD Jacobian run FASTER than SciPy")
+    print("    due to zero-overhead execution, algorithmic doubling (SDA), and imaginary perturbation.")
+    print("  • Pure-Python numerical methods (ODE, Brent) achieve within 1.2x–2.6x of C/Fortran.")
     print()
 
 

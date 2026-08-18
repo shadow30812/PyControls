@@ -1,0 +1,39 @@
+PyControls Benchmark Results — 2026-08-18 09:18:36
+Platform: Linux-6.12.0-211.47.1.el10_2.x86_64-x86_64-with-glibc2.39
+Iterations: 5 | Total Wall-Clock: 202.24s
+
+  Benchmark                    Status     Mean (s)   Min (s)   Max (s)    StdDev
+  ──────────────────────────────────────────────────────────────────────────
+  1.1  CSD Accuracy            5/5 P          0.05      0.02      0.15      0.05
+  1.2  Matrix Exponential      5/5 P          0.07      0.03      0.23      0.08
+  1.3  ODE Solver Accuracy     5/5 P          0.15      0.13      0.25      0.05
+  1.4  DARE Convergence        5/5 P          0.01      0.01      0.03      0.01
+  2.1  JIT Speedup             5/5 P          0.36      0.35      0.37      0.01
+  2.2  MPC Solve Times         5/5 P          3.47      3.42      3.55      0.05
+  2.3  EKF/UKF Timing          5/5 P          0.33      0.32      0.35      0.01
+  2.4  Scalability Study       5/5 P          0.05      0.04      0.05      0.00
+  3.1  Control Metrics         5/5 P          0.18      0.18      0.19      0.01
+  3.3  MPC Optimality          5/5 P          0.21      0.20      0.22      0.01
+  3.4  Stability Margins       5/5 P          0.20      0.19      0.21      0.01
+  4.1–4.3  Estimation Metrics  5/5 P         34.90     33.77     36.76      1.00
+  5.1  SciPy Speed Comparison  5/5 P          0.47      0.41      0.66      0.09
+  ──────────────────────────────────────────────────────────────────────────
+  TOTAL / AVERAGE              65/65 PASS     40.45 s
+
+
+Detailed Raw Iteration Times (seconds):
+Benchmark                      Run      1 Run      2 Run      3 Run      4 Run      5
+----------------------------------------------------------------------
+1.1  CSD Accuracy                  0.15     0.02     0.02     0.02     0.02
+1.2  Matrix Exponential            0.23     0.03     0.03     0.03     0.03
+1.3  ODE Solver Accuracy           0.25     0.13     0.13     0.13     0.13
+1.4  DARE Convergence              0.03     0.01     0.01     0.01     0.01
+2.1  JIT Speedup                   0.35     0.36     0.36     0.36     0.37
+2.2  MPC Solve Times               3.50     3.42     3.43     3.47     3.55
+2.3  EKF/UKF Timing                0.32     0.32     0.32     0.32     0.35
+2.4  Scalability Study             0.05     0.05     0.04     0.04     0.05
+3.1  Control Metrics               0.18     0.18     0.18     0.18     0.19
+3.3  MPC Optimality                0.22     0.20     0.20     0.20     0.22
+3.4  Stability Margins             0.19     0.19     0.19     0.19     0.21
+4.1–4.3  Estimation Metrics       33.77    34.53    34.59    34.87    36.76
+5.1  SciPy Speed Comparison        0.66     0.41     0.41     0.44     0.44

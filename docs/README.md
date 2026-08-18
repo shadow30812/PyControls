@@ -161,7 +161,20 @@ This enables safe and robust real-time control experiments.
 ## 📂 Project Structure
 
 ```java
-PyControls/
+├── benchmarking/
+│   ├── benchmark_csd.py
+│   ├── benchmark_dare.py
+│   ├── benchmark_ekf_ukf_timing.py
+│   ├── benchmark_expm.py
+│   ├── benchmark_jit.py
+│   ├── benchmark_mpc.py
+│   ├── benchmark_mpc_optimality.py
+│   ├── benchmark_ode.py
+│   ├── benchmark_scalability.py
+│   ├── benchmark_scipy_speed.py
+│   ├── benchmark_stability_margins.py
+│   ├── control_metrics.py
+│   └── estimation_metrics.py
 ├── core/
 │   ├── __init__.py
 │   ├── analysis.py
@@ -177,53 +190,21 @@ PyControls/
 │   ├── transfer_function.py
 │   └── ukf.py
 ├── docs/
+│   ├── Benchmarks Guide.md
 │   ├── Complexity Analysis.md
 │   ├── Equations and Formulae.md
 │   ├── LICENSE
 │   └── README.md
-├── Heater Project Report/
-│   ├── Figure.png
-│   └── Project Report.md
 ├── helpers/
 │   ├── config.py
 │   ├── exit.py
 │   ├── plot.py
 │   ├── simulation_runner.py
 │   └── system_registry.py
-├── HIL_Heater_Firmware/
-│   ├── include/
-│   │   └── README
-│   ├── lib/
-│   │   └── README
-│   ├── src/
-│   │   └── main.cpp
-│   ├── test/
-│   │   └── README
-│   ├── .gitignore
-│   └── platformio.ini
-├── HIL_PWM_Firmware/
-│   ├── include/
-│   │   └── README
-│   ├── lib/
-│   │   └── README
-│   ├── src/
-│   │   └── main.cpp
-│   ├── test/
-│   │   └── README
-│   ├── .gitignore
-│   └── platformio.ini
 ├── modules/
 │   ├── __init__.py
 │   ├── interactive_lab.py
 │   └── physics_engine.py
-├── PWM Project Report/
-│   ├── Figure 1.png
-│   ├── Figure 2.png
-│   ├── Figure 3.png
-│   ├── Figure 4.png
-│   ├── Figure 5.png
-│   ├── Figure 6.png
-│   └── Project Report.md
 ├── systems/
 │   ├── __init__.py
 │   ├── battery.py
@@ -241,13 +222,31 @@ PyControls/
 │   ├── test_solver.py
 │   ├── test_systems.py
 │   └── test_ukf_mpc.py
-├── .gitignore
+├── benchmark_runner.py
 ├── main.py
 ├── pyproject.toml
 ├── requirements.txt
 ├── script.py
 └── test_runner.py
 ```
+
+---
+
+## 📊 Benchmarks & Empirical Performance
+
+PyControls includes a comprehensive 13-suite automated benchmarking harness evaluated across 5-run statistical averages:
+
+| Module / Operation | PyControls Metric | Comparison vs SciPy / Industry | Key Engineering Advantage |
+|---|---|---|---|
+| **Matrix Exponential ($4\times4$)** | **$3.02\mu\text{s}$** | **$10.9\times$ faster** than SciPy ($33.02\mu\text{s}$) | JIT zero-overhead execution for online LPV discretization |
+| **Numerical Jacobian (CSD)** | **$10.43\mu\text{s}$** | **$20.7\times$ faster** than SciPy ($215.87\mu\text{s}$) | Machine-precision derivatives ($<10^{-16}$) without cancellation error |
+| **DARE Solver (SDA, $4\times4$)** | **$32.92\mu\text{s}$** | **$8.9\times$ faster** than SciPy ($291.39\mu\text{s}$) | Quadratic doubling algorithm ($2^k$) vs QZ decomposition |
+| **ZOH Discretization ($4\times4$)** | **$6.38\mu\text{s}$** | **$3.1\times$ faster** than SciPy ($19.82\mu\text{s}$) | Exact block matrix exponential with zero wrapper overhead |
+| **Numba JIT Acceleration ($8\times8$)** | **$6.59\mu\text{s}$** | **$327.8\times$ speedup** over pure Python | LLVM compilation to native x86 machine instructions |
+| **Linear MPC (ADMM, $H=10$)** | **$0.53\text{ ms}$** | Real-time capable up to **$1.9\text{ kHz}$** | Condensed pre-factored QP matrices with vector clipping |
+| **Nonlinear Estimation (UKF)** | **$0.0133\text{ RMSE}$** | **$37.9\%$ lower RMSE** than EKF | Superior sigma-point tracking through Coulomb stiction |
+
+*For complete derivations, mathematical concepts, and metrics, see [`docs/Benchmarks Guide.md`](Benchmarks%20Guide.md).*
 
 ---
 
@@ -273,7 +272,11 @@ python main.py
 python test_runner.py
 ```
 
-Numerical correctness is critical—tests verify solver accuracy to tolerance.
+### Run Benchmarks Suite (5-Iteration Average)
+
+```bash
+python benchmark_runner.py
+```
 
 ---
 
@@ -283,5 +286,5 @@ This project is licensed under the MIT License. See `docs/LICENSE` for details.
 
 ---
 
-Version: 5.4.0  
-Last Updated: 6 August 2026
+Version: 5.5.0  
+Last Updated: 18 August 2026
